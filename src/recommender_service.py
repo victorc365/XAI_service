@@ -2,6 +2,7 @@ import tensorflow as tf
 from typing import Dict, Any, List, Tuple
 import traceback
 import numpy as np
+from model_utils import identify_data_types
 
 class RecommenderService:
     def __init__(self, model_path) -> None:
@@ -47,6 +48,18 @@ class RecommenderService:
         except Exception as e:
             print(f"An error occurred while predicting items: {traceback.format_exc()}")
             raise Exception(f"An error occurred while predicting items: {traceback.format_exc()}")
+        
+    def get_model_data_types(self) -> Dict[str, Any]:
+        dict_ans = {}
+        if self.model is not None:
+            model_inputs = self.model.inputs
+            numeric_feat, categorical_feat, embed_feat = identify_data_types(model_inputs)
+            dict_ans['numeric_features'] = numeric_feat
+            dict_ans['categorical_features'] = categorical_feat
+            dict_ans['embedding_features'] = embed_feat
+        return dict_ans
+            
+        
         
 if __name__ == "__main__":
     recommender_service = RecommenderService("model_assets/model_full_use__fold_0.tf")
