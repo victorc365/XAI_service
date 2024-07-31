@@ -119,10 +119,10 @@ class ExplanationService:
                             cpds[cause] = proba
                             print(f"cpds: {proba}")
                             print("------------------------------------------")
-                            multi_explanations.append(cpds.copy())
                     except Exception as e:
                         print(f"An error occurred while explaining: {traceback.format_exc()}")
                         continue
+                multi_explanations.append(cpds.copy())
             return multi_explanations
         else:
             raise ValueError("BN model not loaded.")
