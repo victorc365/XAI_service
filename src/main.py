@@ -51,10 +51,20 @@ async def recommendation(data: Request, num_recommendations: int = 2):
         recipes_df = pd.read_csv("model_assets/df_recipes.csv", sep='|', index_col=0)
         topk_recommendations, topk_indices, final_dict = recommender_service.produce_recommendations(user_data=user_dict,
                                                             context_data=context_dict,
-                                                            recipes_df=recipes_df.sample(100)
+                                                            recipes_df=recipes_df.sample(100),
+                                                            num_items=num_recommendations
                                                             )
+        ans = {}
+        for key in final_dict.keys():
+            ans[key] = [final_dict[key][i] for i in topk_indices]
+        answer = {
+            "recommendations": topk_recommendations,
+            "rule_based_explanation": "",
+            "probabilistic_explanation": ""
+        }
+        answer_encode = jsonable_encoder(answer)
+        return JSONResponse(content=answer_encode)
         # TODO: add explanations here
-        return topk_recommendations
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred while generating items: {str(e)}")
 
