@@ -1,3 +1,4 @@
+import traceback
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 import uvicorn
@@ -57,15 +58,28 @@ async def recommendation(data: Request, num_recommendations: int = 2):
         ans = {}
         for key in final_dict.keys():
             ans[key] = [final_dict[key][i] for i in topk_indices]
+        print(f"reco_dict: {ans}")
+        X_final = explanation_service.data_preprocessing_for_rules(ans, embedding_cols='embeddings')
+        print(X_final.shape)
+        rule_prediction = explanation_service.explain_decision_with_rules(X_final)
+        expa = explanation_service.generate_text_explanation_from_rule_prediction(rule_prediction)
+        print(f"Text Explanation: {expa}")
+        processed_sample = ans.copy()
+        processed_sample.update({'y_pred': rule_prediction[0]})
+        post_processed_sample = explanation_service.data_preprocessing_for_bn(processed_sample)
+        print(f"Post: {post_processed_sample}")
+        expa_bn = explanation_service.explanation_bayesian_network(post_processed_sample)
+        print(f"Bayesian Network Explanation: {expa_bn}")
         answer = {
             "recommendations": topk_recommendations,
-            "rule_based_explanation": "",
-            "probabilistic_explanation": ""
+            "rule_based_explanation": expa,
+            "probabilistic_explanation": expa_bn
         }
         answer_encode = jsonable_encoder(answer)
         return JSONResponse(content=answer_encode)
         # TODO: add explanations here
     except Exception as e:
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"An error occurred while generating items: {str(e)}")
 
 
@@ -93,7 +107,6 @@ async def predict_items(data: Request, num_recommendations: int = 2):
         print(f"Post: {post_processed_sample}")
         expa_bn = explanation_service.explanation_bayesian_network(post_processed_sample)
         print(f"Bayesian Network Explanation: {expa_bn}")
-        
         answer  = {"reco_idx": reco_index.tolist(),
                    "rule_explanation": expa,
                    "bn_explanation": expa_bn}

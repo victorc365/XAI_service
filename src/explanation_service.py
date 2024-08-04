@@ -51,6 +51,7 @@ class ExplanationService:
         
     def data_preprocessing_for_rules(self, data: dict, transformer: Any = None, embedding_cols: str="") -> dict:
         data_df = pd.DataFrame.from_dict(data, orient='index').T
+        print(f"Data df:{data_df}")
         if self.rule_preprocessing is not None:
             X =  self.rule_preprocessing.transform(data_df)
         else:
@@ -58,10 +59,14 @@ class ExplanationService:
                 X =  transformer.transform(data_df)
             else:
                 X = data_df.to_numpy()
+        print(f"X: {X.shape}")
         if self.cluster_model is not None:
-            if data[embedding_cols].ndim == 1:
-                data[embedding_cols] = data[embedding_cols].reshape(1, -1)
-            cluster = self.cluster_model.predict(data[embedding_cols])
+            embedding = np.array(data_df[embedding_cols].tolist())
+            print(f"Embedding size:{embedding.shape}")
+            if embedding.ndim == 1:
+                embedding = embedding.reshape(1, -1)
+            cluster = self.cluster_model.predict(embedding)
+            print(f"cluster: {cluster}")
             X_final = np.column_stack((X, cluster))
         else:
             X_final = X
