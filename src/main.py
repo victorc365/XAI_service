@@ -68,7 +68,7 @@ async def recommendation(data: Request, num_recommendations: int = 2):
         processed_sample.update({'y_pred': rule_prediction[0]})
         post_processed_sample = explanation_service.data_preprocessing_for_bn(processed_sample)
         print(f"Post: {post_processed_sample}")
-        expa_bn = explanation_service.explanation_bayesian_network(post_processed_sample)
+        expa_bn = explanation_service.generate_text_explanation_from_bn_prediction(post_processed_sample)
         print(f"Bayesian Network Explanation: {expa_bn}")
         answer = {
             "recommendations": topk_recommendations,
@@ -77,7 +77,6 @@ async def recommendation(data: Request, num_recommendations: int = 2):
         }
         answer_encode = jsonable_encoder(answer)
         return JSONResponse(content=answer_encode)
-        # TODO: add explanations here
     except Exception as e:
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"An error occurred while generating items: {str(e)}")

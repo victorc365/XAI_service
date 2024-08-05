@@ -84,6 +84,17 @@ class ExplanationService:
                 new_data[key] = new_data[key].flatten().tolist()
         return new_data
     
+    def inverse_data_preprocessing_for_bn(self, key: str, value: Any, decimals=2) -> Union[str, Any]:
+        new_value = value
+        if self.discretized_dict is not None:
+            if key in self.discretized_dict:
+                bins = self.discretized_dict[key]
+                if value == 0:
+                    new_value = f"{key} <= {np.round(bins[value], decimals=decimals)}"
+                else:
+                    new_value = f"{np.round(bins[value-1], decimals)} <= {key} < {(np.round(bins[value], decimals))}"
+        return new_value
+    
     def explain_decision_with_rules(self, data_array: Any) -> Union[List[str], str]:
         if self.rule_set is not None:
             prediction = self.rule_set.predict_numpy_rules(data_array, return_decision_path=True)
@@ -96,6 +107,7 @@ class ExplanationService:
         len_list = 1
         multi_explanations = []
         cpds = {}
+        explanation = {}
         nodes_to_exclude = []
         evidence_dict_internal = evidence_dict.copy()
         if self.bn_model is not None:
@@ -107,7 +119,6 @@ class ExplanationService:
                     len_list = len(evidence_dict[key])
             print(f"Excluded nodes: {nodes_to_exclude}")
             for i in range(len_list):
-                print(f"user: {1}")
                 for cause in evidence_dict_internal.keys():
                     try:
                         print(f"Cause: {cause}:")
@@ -122,12 +133,13 @@ class ExplanationService:
                             cpds[cause] = bn.inference.fit(self.bn_model, variables=[cause], evidence=final_temp)
                             proba = cpds[cause].get_value(**{cause: evidence_dict_internal[cause][i]})
                             cpds[cause] = proba
+                            explanation[f"{cause}={self.inverse_data_preprocessing_for_bn(cause, evidence_dict_internal[cause][i])}"] = proba
                             print(f"cpds: {proba}")
                             print("------------------------------------------")
                     except Exception as e:
                         print(f"An error occurred while explaining: {traceback.format_exc()}")
                         continue
-                multi_explanations.append(cpds.copy())
+                multi_explanations.append(explanation.copy())
             return multi_explanations
         else:
             raise ValueError("BN model not loaded.")
@@ -149,7 +161,21 @@ class ExplanationService:
             explanations.append(explanation)
         return explanations
     
-    
+    def generate_text_explanation_from_bn_prediction(self, evidence_dict: Any) -> str:
+        raw_explanation = self.explanation_bayesian_network(evidence_dict)
+        # generate text explanations 
+        template = "The reasons of my decision are: {text_xai}"
+        text_explanations = []
+        for raw_xai in raw_explanation:
+            # sort from proba 
+            sorted_xai = sorted(raw_xai.items(), key=lambda item: item[1], reverse=True)
+            text_xai = []
+            for t in sorted_xai:
+                if t[1] > 0.55:
+                    text_xai.append(f"{t[0]} with probability: {np.round(t[1], 2)}") 
+            text_xai = ", ".join(text_xai)
+            text_explanations.append(template.format(text_xai=text_xai))
+        return text_explanations
     
 if __name__ == "__main__":
     recommender_service = RecommenderService("model_assets/model_full_use__fold_0.tf")
