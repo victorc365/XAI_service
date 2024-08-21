@@ -86,7 +86,8 @@ class RecommenderService:
                 print("Topk indices:", topk_indices)
                 recipes_ids = recipes_df[recipe_id_col].tolist()
                 topk_recommendations = [recipes_ids[i] for i in topk_indices]
-                return topk_recommendations, topk_indices, final_dict
+                top_predictions = [predictions_numpy.flatten()[i] for i in topk_indices]
+                return topk_recommendations, topk_indices, final_dict, top_predictions
         except Exception as e:
             print(f"Error generating recipes: {e}")
             print(traceback.format_exc())

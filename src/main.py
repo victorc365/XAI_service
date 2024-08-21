@@ -26,6 +26,20 @@ explanation_service.load_discretized_dict('model_assets/discretize_dict.pkl')
 class Recommendation(BaseModel):
     recipe_id: str
     probability: float
+    
+def multi_sampling(recipes_df, user_dict, context_dict, num_recommendations=2, sample_size=100, threshold=0.7):
+    while True:
+        sample = recipes_df.sample(n=sample_size, replace=False)
+        topk_recommendations, topk_indices, final_dict, top_pred = recommender_service.produce_recommendations(
+                user_data=user_dict,
+                context_data=context_dict,
+                recipes_df=sample,
+                num_items=num_recommendations
+                                            )
+        if all(pred >= threshold for pred in top_pred):
+            return topk_recommendations, topk_indices, final_dict, top_pred
+        
+        
 
 app = FastAPI(
     title="Recommendation and explanation model",
@@ -43,18 +57,32 @@ def healthcheck():
     return {"status": "OK"}
 
 @app.post("/recommendation/")
-async def recommendation(data: Request, num_recommendations: int = 2):
+async def recommendation(data: Request, num_recommendations: int = 2, sample_size: int = 100):
     try:
         input_data = await data.json()
         print(f"input data: {input_data}")
         user_dict = input_data["profile"]
         context_dict = input_data["context"]
         recipes_df = pd.read_csv("model_assets/df_recipes.csv", sep='|', index_col=0)
-        topk_recommendations, topk_indices, final_dict = recommender_service.produce_recommendations(user_data=user_dict,
+        if "recipes" in input_data.keys():
+            recipes_ids = input_data["recipes"]
+            recipes_samples = recipes_df[recipes_df["recipeId"].isin(recipes_ids)]
+            topk_recommendations, topk_indices, final_dict, top_pred = recommender_service.produce_recommendations(user_data=user_dict,
                                                             context_data=context_dict,
-                                                            recipes_df=recipes_df.sample(100),
+                                                            recipes_df=recipes_samples,
                                                             num_items=num_recommendations
                                                             )
+        else:
+            topk_recommendations, topk_indices, final_dict, top_pred = multi_sampling(recipes_df, 
+                                                                                      user_dict, 
+                                                                                      context_dict, 
+                                                                                      num_recommendations=num_recommendations, 
+                                                                                      sample_size=sample_size, 
+                                                                                      threshold=0.7)
+
+        # check high values in recommendations mode
+        general_explanation = explanation_service.generate_high_level_explanation(entities_list=["profile", "recipe", "context"],
+                                                                                  predictions=top_pred)
         ans = {}
         for key in final_dict.keys():
             ans[key] = [final_dict[key][i] for i in topk_indices]
@@ -72,6 +100,7 @@ async def recommendation(data: Request, num_recommendations: int = 2):
         print(f"Bayesian Network Explanation: {expa_bn}")
         answer = {
             "recommendations": topk_recommendations,
+            "general_explanation": general_explanation,
             "rule_based_explanation": expa,
             "probabilistic_explanation": expa_bn
         }
@@ -80,8 +109,6 @@ async def recommendation(data: Request, num_recommendations: int = 2):
     except Exception as e:
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"An error occurred while generating items: {str(e)}")
-
-
 
 
 @app.post("/recommend/")
@@ -104,7 +131,7 @@ async def predict_items(data: Request, num_recommendations: int = 2):
         processed_sample.update({'y_pred': rule_prediction[0]})
         post_processed_sample = explanation_service.data_preprocessing_for_bn(processed_sample)
         print(f"Post: {post_processed_sample}")
-        expa_bn = explanation_service.explanation_bayesian_network(post_processed_sample)
+        expa_bn = explanation_service.generate_text_explanation_from_bn_prediction(post_processed_sample)
         print(f"Bayesian Network Explanation: {expa_bn}")
         answer  = {"reco_idx": reco_index.tolist(),
                    "rule_explanation": expa,

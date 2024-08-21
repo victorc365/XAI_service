@@ -139,7 +139,9 @@ class ExplanationService:
                     except Exception as e:
                         print(f"An error occurred while explaining: {traceback.format_exc()}")
                         continue
+                print(f"Explanation: {explanation}")
                 multi_explanations.append(explanation.copy())
+                explanation = {}
             return multi_explanations
         else:
             raise ValueError("BN model not loaded.")
@@ -161,21 +163,43 @@ class ExplanationService:
             explanations.append(explanation)
         return explanations
     
-    def generate_text_explanation_from_bn_prediction(self, evidence_dict: Any) -> str:
+    def generate_text_explanation_from_bn_prediction(self, evidence_dict: Any, decimals: int = 2) -> str:
         raw_explanation = self.explanation_bayesian_network(evidence_dict)
+        print(f"Raw explanation: {raw_explanation}")
         # generate text explanations 
-        template = "The reasons of my decision are: {text_xai}"
+        template = "I believe you would {prediction} because {text_xai}"
         text_explanations = []
+        prediction_text = ""
         for raw_xai in raw_explanation:
             # sort from proba 
+            if raw_xai.get("y_pred=1", None) is not None:
+                prediction_text = f"like with probability {np.round(raw_xai['y_pred=1'], decimals)}"
+                del raw_xai['y_pred=1']
+            elif raw_xai.get("y_pred=0", None) is not None:
+                prediction_text = f"dislike with probability {np.round(1.0 - raw_xai['y_pred=0'], decimals)}"
+                del raw_xai['y_pred=0']
             sorted_xai = sorted(raw_xai.items(), key=lambda item: item[1], reverse=True)
             text_xai = []
             for t in sorted_xai:
                 if t[1] > 0.55:
-                    text_xai.append(f"{t[0]} with probability: {np.round(t[1], 2)}") 
+                    text_xai.append(f"{t[0]} with probability: {np.round(t[1], decimals)}") 
             text_xai = ", ".join(text_xai)
-            text_explanations.append(template.format(text_xai=text_xai))
+            text_explanations.append(template.format(prediction=prediction_text, text_xai=text_xai))
         return text_explanations
+    
+    def generate_high_level_explanation(self, entities_list, predictions):
+        # generate high level explanation using text explanations
+        template = "I believe that you would {decision} because the combination of your {entities} is {high_low} compatible"
+        answer = []
+        for pred in predictions:
+            if pred >= 0.7:
+                answer.append(template.format(decision="like", entities=", ".join(entities_list), high_low="high"))
+            elif pred > 0.4 and pred < 0.7:
+                answer.append(template.format(decision="may like", entities=", ".join(entities_list), high_low="middle"))
+            else:
+                answer.append(template.format(decision="dislike", entities=", ".join(entities_list), high_low="low"))
+        return answer
+        
     
 if __name__ == "__main__":
     recommender_service = RecommenderService("model_assets/model_full_use__fold_0.tf")
