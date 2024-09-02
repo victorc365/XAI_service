@@ -5,6 +5,11 @@ import default_values as dfv
 
 
 st.title('Test recommendation model')
+st.write("""
+         
+Victor H. Contreras, Michael Schumacher and Davide Calvaresi, Explanation of Deep Learning Models via Logic Rules Enhanced by Embeddings Analysis, and Probabilistic Models, in: Post-proceedings of the 6th International Workshop on EXplainable and TRAnsparent AI and Multi-Agent Systems, 2024
+         """)
+st.markdown("* Hello")
 options_reco = ['Best recommendations', 'Evaluate recipe list', 'Provide full data']
 
 reco_mode = st.selectbox('Please select a recommendation mode:',

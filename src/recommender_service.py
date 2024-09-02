@@ -3,13 +3,19 @@ from typing import Dict, Any, List, Tuple
 import traceback
 import numpy as np
 from model_utils import identify_data_types
-import pandas as pd 
+import pandas as pd
+from sentence_transformers import SentenceTransformer
 
 class RecommenderService:
     def __init__(self, model_path) -> None:
         self.model = tf.keras.models.load_model(model_path)
         print(f"Model loaded successfully!")
         self.embeddings = None
+        self.embedding_transformer = None
+        
+    def load_embedding_transformer(self, transformer_type: str = "bert") -> None:
+        if transformer_type == "bert":
+            self.embedding_transformer = SentenceTransformer('bert-base-nli-mean-tokens')
         
     def load_embeddings(self, embeddings_path: str) -> None:
         # load embedding if it is necessary
@@ -91,7 +97,39 @@ class RecommenderService:
         except Exception as e:
             print(f"Error generating recipes: {e}")
             print(traceback.format_exc())
-        
+            
+            
+    def check_compatibility(self, user_profile, context, recipe_data):
+        #TODO: Implement this method to check the compatibility of user profile context and recipe data
+        #TODO: Impute missing values for new recipes with know recipes
+        # Transform ingredients 
+        ingredients = recipe_data["ingredients"]
+        new_recipe_data = {}
+        final_dict = {}
+        new_recipe_data.update(recipe_data)
+        if self.embedding_transformer is not None:
+            del new_recipe_data["ingredients"]
+            embedding = self.embedding_transformer.encode(ingredients)
+            print(f"Embedding shape: {embedding.shape}")
+            if embedding.ndim == 1:
+                new_recipe_data["embeddings"] = embedding.reshape(1, -1)
+            else:
+                new_recipe_data["embeddings"] = embedding
+        print(f"shape embedding: {new_recipe_data['embeddings'].shape}")
+        # 1. Make the prediction 
+        final_dict.update(user_profile)
+        final_dict.update(context)
+        final_dict.update(new_recipe_data)
+        for key, value in final_dict.items():
+            if not isinstance(value, List) and not isinstance(value, np.ndarray):
+                final_dict[key] = [value]
+        input_data = self.transform_input_data(final_dict)
+        print(f"Input data: {input_data}")
+        predictions = self.model(input_data)
+        predictions_numpy = predictions.numpy()
+        print("Predictions:", predictions_numpy)
+        return final_dict, predictions_numpy
+            
     def get_model_data_types(self) -> Dict[str, Any]:
         dict_ans = {}
         if self.model is not None:

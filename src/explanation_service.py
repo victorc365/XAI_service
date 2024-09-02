@@ -150,7 +150,7 @@ class ExplanationService:
         explanations =[]
         prediction, rule_path = rule_prediction
         for i in range(len(prediction)):
-            if prediction[i] == 1:
+            if prediction[i] > 0.6:
                 text_pred = "like"
             else:
                 text_pred = "dislike"

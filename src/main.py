@@ -9,8 +9,10 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 import pandas as pd
 
+
 # Init objects
 recommender_service = RecommenderService("model_assets/model_full_use__fold_0.tf")
+recommender_service.load_embedding_transformer()
 model_inputs_and_type = recommender_service.get_model_inputs_and_type()
 print(model_inputs_and_type)
 recommender_service.load_embeddings("model_assets/full_recipe_embedding_BERT_v2_17_may_recipeId.npz")
@@ -109,6 +111,42 @@ async def recommendation(data: Request, num_recommendations: int = 2, sample_siz
     except Exception as e:
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"An error occurred while generating items: {str(e)}")
+    
+@app.post("/checkCompatibility/")
+async def check_new_recipe(data: Request):
+    try:
+        input_data = await data.json()
+        user_profile = input_data["profile"]
+        context = input_data["context"]
+        recipe_data = input_data["recipe_data"]
+        final_dict, predictions = recommender_service.check_compatibility(user_profile, context, recipe_data)
+        general_explanation = explanation_service.generate_high_level_explanation(entities_list=["profile", "recipe", "context"],
+                                                                                  predictions=predictions)
+        print(f"General explanation: {general_explanation}")
+        X_final = explanation_service.data_preprocessing_for_rules(final_dict, embedding_cols='embeddings')
+        print(f"X_final: {X_final.shape}")
+        rule_prediction = explanation_service.explain_decision_with_rules(X_final)
+        print(f"Rule prediction: {rule_prediction}")
+        expa = explanation_service.generate_text_explanation_from_rule_prediction(rule_prediction)
+        print(f"Text Explanation: {expa}")
+        processed_sample = final_dict.copy()
+        processed_sample.update({'y_pred': rule_prediction[0]})
+        # post_processed_sample = explanation_service.data_preprocessing_for_bn(processed_sample)
+        # print(f"Post: {post_processed_sample}")
+        # expa_bn = explanation_service.generate_text_explanation_from_bn_prediction(post_processed_sample)
+        # print(f"Bayesian Network Explanation: {expa_bn}")
+        answer = {
+            "recommendations": predictions.tolist(),
+            "general_explanation": general_explanation,
+            "rule_based_explanation": expa,
+            "probabilistic_explanation": ""
+        }
+        answer_encode = jsonable_encoder(answer)
+        return JSONResponse(content=answer_encode)
+    except Exception as e:
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"An error occurred while processing new recipe: {str(e)}")
+
 
 
 @app.post("/recommend/")
@@ -117,12 +155,22 @@ async def predict_items(data: Request, num_recommendations: int = 2):
         input_data = await data.json()
         print(f"Input data: {input_data}")
         new_data = input_data.copy()
-        del new_data["recipeId"]
-        new_data["embeddings"] = recommender_service.get_embedding_for_recipe_id(input_data["recipeId"]).reshape(1, -1)
+        ingredients = new_data["ingredients"]
+        #TODO: preprocess ingredients list
+        if len(ingredients) == 1:
+            embedding = model_bert_st.encode(ingredients)
+            if embedding.ndim == 1:
+                new_data["embeddings"] = embedding.reshape(1, -1)
+            else:
+                new_data["embeddings"] = embedding
+        elif len(ingredients) > 1:
+            embedding = model_bert_st.encode(ingredients)
+            new_data["embeddings"] = embedding.tolist()
         recommendation_results, reco_index = recommender_service.recommend_items(new_data, num_recommendations)
+        print("Prediction successful")
         X_final = explanation_service.data_preprocessing_for_rules(new_data, embedding_cols='embeddings')
         #X_final = np.repeat(X_final, 4, axis=0)
-        print()
+        print(f"X_final obtained shape: {X_final.shape}")
         print(X_final.shape)
         rule_prediction = explanation_service.explain_decision_with_rules(X_final)
         expa = explanation_service.generate_text_explanation_from_rule_prediction(rule_prediction)
