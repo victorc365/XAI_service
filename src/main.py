@@ -8,6 +8,7 @@ from typing import List
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 import pandas as pd
+from sentence_transformers import SentenceTransformer
 
 
 # Init objects
@@ -22,7 +23,7 @@ explanation_service.load_rule_set('model_assets/new_experiments_ruleset_bert_0.p
 explanation_service.load_bn_model('model_assets/bn_model_bert.pkl')
 explanation_service.load_rule_set_preprocessing('model_assets/preprocessor_rule.pkl')
 explanation_service.load_discretized_dict('model_assets/discretize_dict.pkl')
-
+model_bert_st = SentenceTransformer('bert-base-nli-mean-tokens')
 
 
 class Recommendation(BaseModel):
@@ -126,20 +127,22 @@ async def check_new_recipe(data: Request):
         X_final = explanation_service.data_preprocessing_for_rules(final_dict, embedding_cols='embeddings')
         print(f"X_final: {X_final.shape}")
         rule_prediction = explanation_service.explain_decision_with_rules(X_final)
+        general_explanation = explanation_service.generate_high_level_explanation(entities_list=["profile", "recipe", "context"],
+                                                                                  predictions=rule_prediction[0].tolist())
         print(f"Rule prediction: {rule_prediction}")
         expa = explanation_service.generate_text_explanation_from_rule_prediction(rule_prediction)
         print(f"Text Explanation: {expa}")
         processed_sample = final_dict.copy()
         processed_sample.update({'y_pred': rule_prediction[0]})
-        # post_processed_sample = explanation_service.data_preprocessing_for_bn(processed_sample)
-        # print(f"Post: {post_processed_sample}")
-        # expa_bn = explanation_service.generate_text_explanation_from_bn_prediction(post_processed_sample)
-        # print(f"Bayesian Network Explanation: {expa_bn}")
+        post_processed_sample = explanation_service.data_preprocessing_for_bn(processed_sample)
+        print(f"Post: {post_processed_sample}")
+        expa_bn = explanation_service.generate_text_explanation_from_bn_prediction(post_processed_sample)
+        print(f"Bayesian Network Explanation: {expa_bn}")
         answer = {
-            "recommendations": predictions.tolist(),
+            "recommendations": [],
             "general_explanation": general_explanation,
             "rule_based_explanation": expa,
-            "probabilistic_explanation": ""
+            "probabilistic_explanation": expa_bn
         }
         answer_encode = jsonable_encoder(answer)
         return JSONResponse(content=answer_encode)
@@ -147,7 +150,10 @@ async def check_new_recipe(data: Request):
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"An error occurred while processing new recipe: {str(e)}")
 
-
+@app.post("/recommendByProximity/")
+async def recommend_by_proximity(data: Request, num_recommendations: int = 2): 
+    #TODO: Recommend by proximity given user query
+    pass 
 
 @app.post("/recommend/")
 async def predict_items(data: Request, num_recommendations: int = 2):

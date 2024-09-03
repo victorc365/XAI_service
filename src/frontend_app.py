@@ -5,11 +5,10 @@ import default_values as dfv
 
 
 st.title('Test recommendation model')
-st.write("""
-         
-Victor H. Contreras, Michael Schumacher and Davide Calvaresi, Explanation of Deep Learning Models via Logic Rules Enhanced by Embeddings Analysis, and Probabilistic Models, in: Post-proceedings of the 6th International Workshop on EXplainable and TRAnsparent AI and Multi-Agent Systems, 2024
-         """)
-st.markdown("* Hello")
+
+
+st.markdown("""To test the recommender model first select the mode in the dropdown bellow and provide the data in the form
+            """)
 options_reco = ['Best recommendations', 'Evaluate recipe list', 'Provide full data']
 
 reco_mode = st.selectbox('Please select a recommendation mode:',
@@ -19,6 +18,7 @@ reco_mode = st.selectbox('Please select a recommendation mode:',
 base_url = 'http://localhost:8500/'
 
 # collect data 
+st.subheader("User data", divider=True)
 st.write('Please complete the user profile:')
 profile = {
         "nutrition_goal": "maintain_fit",
@@ -73,7 +73,7 @@ profile["BMI"] = st.selectbox(f"Please select your BMI:",
 profile["next_BMI"] = st.selectbox(f"Please select your next BMI:",
                                    options=list(dfv.bmi_set))
 
-
+st.subheader("Context data", divider=True)
 st.write("Please complete the context:")
 context = {
         "day_number": 1,
@@ -95,7 +95,7 @@ context["social_situation_of_meal_consumption"] = st.selectbox("Social situation
 
 recipe_data = {'cultural_restriction': "vegan", 
                'calories': 650, 
-               'allergens': "tree nuts", 
+               'allergens': "soy", 
                'taste': "sweet", 
                'price': 2,  
                'fiber': 29, 
@@ -121,8 +121,8 @@ elif reco_mode == options_reco[1]:
     if len(recipes_list) > 0:
         data['recipes'] = recipes_list
 else:
-    target_url = urljoin(base_url, '/recommend/')
-    st.write("Target url: %s" % target_url)
+    target_url = urljoin(base_url, "/checkCompatibility/")
+    st.subheader("Recipe data", divider=True)
     st.write('Please complete the following recipe data:')
     recipe_data['cultural_restriction'] = st.selectbox("Select the recipe cultural restriction:",
                                                        options=dfv.recipe_restriction) 
@@ -135,14 +135,22 @@ else:
     recipe_data['fat'] = st.number_input("Introduce recipe fat:", min_value=0.0)
     recipe_data['protein'] = st.number_input("Introduce recipe protein:", min_value=0.0)
     recipe_data['carbohydrates'] = st.number_input("Introduce recipe carbohydrates:", min_value=0.0) 
-    ingredient_text = st.text_input("Introduce ingredients:")
+    recipe_data['ingredients'] = st.text_input("Introduce ingredients:")
+    # ADD query to the the api
     data = {}
-    data.update(profile)
-    data.update(recipe_data)
-    data.update(context)
+    data["profile"] = profile
+    data["recipe_data"] = recipe_data
+    data["context"] = context 
+    st.write("Target url: %s" % target_url)
 
 # show answer
 if st.button("Predict"):
     st.write("Bottom clicked on")
     response = requests.post(target_url, json=data)
     st.write(response.json())
+
+# show the references 
+st.subheader("References", divider=True)
+st.write("""
+Victor H. Contreras, Michael Schumacher and Davide Calvaresi, Explanation of Deep Learning Models via Logic Rules Enhanced by Embeddings Analysis, and Probabilistic Models, in: Post-proceedings of the 6th International Workshop on EXplainable and TRAnsparent AI and Multi-Agent Systems, 2024
+         """)
