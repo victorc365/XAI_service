@@ -9,6 +9,14 @@ allergies_queries_dict = {'tree nuts': ['tree', 'nuts', 'nut', 'tree nuts'],
                           "cow's milk": ["cow's milk", "milk", "lactose"],
                           "NotAllergy": []}
 
+user_allergies = ['NotAllergy',
+  'wheat',
+  'peanut',
+  "cow's milk",
+  'soy',
+  'shellfish',
+  'Multiple']
+
 cultural_factors = {
     "vegan_observant": [True, False],
     "vegetarian_observant": [True, False],
