@@ -9,7 +9,7 @@ st.title('Test recommendation model')
 
 st.markdown("""To test the recommender model first select the mode in the dropdown bellow and provide the data in the form
             """)
-options_reco = ['Best recommendations', 'Evaluate recipe list', 'Provide full data']
+options_reco = ['Best recommendations', 'Evaluate recipe list by id', 'Find me a recipe given ingredients',  'Provide full data']
 
 reco_mode = st.selectbox('Please select a recommendation mode:',
                          options=options_reco)
@@ -120,6 +120,14 @@ elif reco_mode == options_reco[1]:
     data['context'] = context
     if len(recipes_list) > 0:
         data['recipes'] = recipes_list
+elif reco_mode == options_reco[2]:
+    target_url = urljoin(base_url, '/recommendByProximity/')
+    st.subheader('Ingredients query', divider=True)
+    ingredients_text = st.text_input(label='Please introduce the ingredients:')
+    data['profile'] = profile
+    data['context'] = context
+    data["ingredients"] = ingredients_text
+    st.write("Target url: %s" % target_url)
 else:
     target_url = urljoin(base_url, "/checkCompatibility/")
     st.subheader("Recipe data", divider=True)

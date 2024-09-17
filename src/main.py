@@ -152,8 +152,81 @@ async def check_new_recipe(data: Request):
 
 @app.post("/recommendByProximity/")
 async def recommend_by_proximity(data: Request, num_recommendations: int = 2): 
-    #TODO: Recommend by proximity given user query
-    pass 
+    # Recommend by proximity given user query
+    try:
+        input_data  = await data.json()
+        print(f"Input data: {input_data}")
+        profile = input_data['profile']
+        context = input_data['context']
+        ingredients = input_data['ingredients']
+        topk_recommendations, topk_indices, final_dict, top_pred = recommender_service.recommend_by_ingredients_similarity(
+                                                                user_profile=profile,
+                                                                context=context,
+                                                                recipe_ingredients=ingredients,
+                                                                num_items=num_recommendations)
+ 
+        # check high values in recommendations mode
+        general_explanation = explanation_service.generate_high_level_explanation(entities_list=["profile", "recipe", "context"],
+                                                                                  predictions=top_pred)
+        ans = {}
+        for key in final_dict.keys():
+            ans[key] = [final_dict[key][i] for i in topk_indices]
+        print(f"reco_dict: {ans}")
+        X_final = explanation_service.data_preprocessing_for_rules(ans, embedding_cols='embeddings')
+        print(X_final.shape)
+        rule_prediction = explanation_service.explain_decision_with_rules(X_final)
+        expa = explanation_service.generate_text_explanation_from_rule_prediction(rule_prediction)
+        print(f"Text Explanation: {expa}")
+        processed_sample = ans.copy()
+        processed_sample.update({'y_pred': rule_prediction[0]})
+        post_processed_sample = explanation_service.data_preprocessing_for_bn(processed_sample)
+        print(f"Post: {post_processed_sample}")
+        expa_bn = explanation_service.generate_text_explanation_from_bn_prediction(post_processed_sample)
+        print(f"Bayesian Network Explanation: {expa_bn}")
+        answer = {
+            "recommendations": topk_recommendations,
+            "general_explanation": general_explanation,
+            "rule_based_explanation": expa,
+            "probabilistic_explanation": expa_bn
+        }
+        answer_encode = jsonable_encoder(answer)
+        return JSONResponse(content=answer_encode)
+    except Exception as e:
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"An error occurred while processing new recipe: {str(e)}")
+    
+@app.post("/partialQuery/")
+async def partialQuery(data: Request):
+    try:
+        input_data = await data.json()
+        user_profile = input_data["profile"]
+        context = input_data["context"]
+        partial_recipe = input_data["recipe"]
+        # preprocess and prepare for query the probabilistic model
+        if "ingredients" in partial_recipe:
+            # transform into embedding
+            embedding = model_bert_st.encode(partial_recipe["ingredients"])
+            print(f"Embedding: {embedding}")
+            if embedding.ndim == 1:
+                partial_recipe["embeddings"] = embedding.reshape(1, -1)
+            else:
+                partial_recipe["embeddings"] = embedding
+        processed_sample = {}
+        processed_sample.update(user_profile)
+        processed_sample.update(context)
+        processed_sample.update(partial_recipe)
+        post_processed_sample = explanation_service.data_preprocessing_for_bn(processed_sample)
+        partial_explanation = explanation_service.generate_partial_explanation_and_predictions(post_processed_sample)
+        answer = {
+            "partial_probabilistic_explanation": partial_explanation
+        }
+        answer_encoded = jsonable_encoder(answer)
+        return JSONResponse(content=answer_encoded)
+    except Exception as e:
+        print(f"Error occurred while generating recipes: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"An error occurred while generating items: {str(e)}")
+    
 
 @app.post("/recommend/")
 async def predict_items(data: Request, num_recommendations: int = 2):

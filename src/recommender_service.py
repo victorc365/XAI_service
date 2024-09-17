@@ -5,6 +5,7 @@ import numpy as np
 from model_utils import identify_data_types
 import pandas as pd
 from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_distances
 
 class RecommenderService:
     def __init__(self, model_path) -> None:
@@ -140,6 +141,42 @@ class RecommenderService:
             dict_ans['embedding_features'] = embed_feat
         return dict_ans
             
+    def recommend_by_ingredients_similarity(self, 
+                                            user_profile: Dict, 
+                                            context: Dict, 
+                                            recipe_ingredients: str, 
+                                            num_items: int = 2,
+                                            sample_size: int = 500):
+        #TODO: test this function 
+        recipes_df = pd.read_csv("model_assets/df_recipes.csv", sep='|', index_col=0)
+        # 1. extract embedding 
+        if self.model is not None and self.embedding_transformer is not None:
+            embedding = self.embedding_transformer.encode(recipe_ingredients)
+            if embedding.ndim == 1:
+                embedding = embedding.reshape(1, -1)
+        # 2. pick up most similar recipes 
+        recipe_list = []
+        recipe_ids = []
+        for recipe_id in self.embeddings.keys():
+            recipe_ids.append(recipe_id)
+            recipe_list.append(self.embeddings[recipe_id])
+        recipe_matrix = np.array(recipe_list)
+        print(f"Recipes matrix shape: {recipe_matrix.shape}")
+        distances = cosine_distances(recipe_matrix, embedding)
+        distances_dict = dict(zip(recipe_ids, distances))
+        sorted_recipes = list(sorted(distances_dict.items(), key=lambda item: item[1], reverse=True))
+        chose_recipes = [item[0] for item in sorted_recipes]
+        print(f"Chosen recipes:{chose_recipes[:sample_size]}")
+        recipes_samples = recipes_df[recipes_df["recipeId"].isin(chose_recipes[:sample_size])]
+        # 3. execute recommendation 
+        topk_recommendations, topk_indices, final_dict, top_pred = self.produce_recommendations(user_data=user_profile,
+                                                            context_data=context,
+                                                            recipes_df=recipes_samples,
+                                                            num_items=num_items,
+                                                            )
+        # 4. return the hights ranked recipes 
+        return topk_recommendations, topk_indices, final_dict, top_pred
+        
         
         
 if __name__ == "__main__":

@@ -28,6 +28,8 @@ class ExplanationService:
     def load_cluster_model(self, cluster_model_path: str) -> None:
         self.cluster_model = ClusterAnalysis()
         self.cluster_model.load_cluster_model(cluster_model_path)
+        # Fix issue 
+        self.cluster_model.cluster_model.cluster_centers_ = self.cluster_model.cluster_model.cluster_centers_.astype(float)
         print(f"Cluster model loaded successfully!")
     
     def load_rule_set(self, rule_set_path: str) -> None:
@@ -102,6 +104,39 @@ class ExplanationService:
             return prediction
         else:
             raise ValueError("Rule set not loaded.")
+        
+    def predict_with_partial_information(self, evidence_dict):
+        len_list = 1
+        multi_explanations = []
+        cpds = {}
+        explanation = {}
+        nodes_to_exclude = []
+        evidence_dict_internal = evidence_dict.copy()
+        if self.bn_model is not None:
+            for key in evidence_dict.keys():
+                if key  not in self.bn_model["model"]:
+                    del evidence_dict_internal[key]
+                    nodes_to_exclude.append(key)
+                else:
+                    len_list = len(evidence_dict[key])
+            print(f"Excluded nodes: {nodes_to_exclude}")
+            # predict 
+            try:
+                for i in range(len_list):
+                    final_tmp = {}
+                    for k in evidence_dict_internal.keys():
+                        final_tmp[k] = evidence_dict_internal[k][i]
+                    cpds = bn.inference.fit(self.bn_model, variables=["y_pred"], evidence=final_tmp)
+                    max_idx = cpds.df["phi(y_pred)"].idxmax()
+                    
+                    print(f"Predictions partial: {cpds}")
+                    print("--------------------------------------------------------------------")
+                    multi_explanations.append(cpds)
+                return cpds
+            except Exception as e:
+                print(f"An error occurred while explaining: {traceback.format_exc()}")
+                return None
+        
     
     def explanation_bayesian_network(self, evidence_dict: Any) -> Union[List[str]]:
         len_list = 1
@@ -186,6 +221,32 @@ class ExplanationService:
             text_xai = ", ".join(text_xai)
             text_explanations.append(template.format(prediction=prediction_text, text_xai=text_xai))
         return text_explanations
+    
+    def generate_partial_explanation_and_predictions(self, evidence, embedding_key: str = "embeddings"):
+        #TODO: Test this method 
+        # first predict y with the evidence 
+        evidence_dict = evidence.copy()
+        # extract cluster
+        if embedding_key in evidence_dict.keys():
+            if self.cluster_model is not None:
+                embedding = np.array(evidence_dict[embedding_key], dtype="float64")
+                print(f"Embedding shape {embedding.shape}")
+                if embedding.ndim == 1:
+                    embedding = embedding.reshape(1, -1)
+                cluster = self.cluster_model.predict(embedding)
+                print(f"cluster: {cluster}")
+                del evidence_dict[embedding_key]
+                evidence_dict["cluster"] = cluster[0]
+        # prepare the evidence dictionary
+        for key in evidence_dict.keys():
+            if not isinstance(evidence_dict[key], List):
+                evidence_dict[key] = [evidence_dict[key]]
+        # predict y with the evidence and cluster
+        y_pred_partial = self.predict_with_partial_information(evidence_dict)
+        print(f"Y partial: {y_pred_partial}")
+        explanation_bayesian_network = self.generate_text_explanation_from_bn_prediction(evidence_dict=evidence_dict)
+        return explanation_bayesian_network
+        
     
     def generate_high_level_explanation(self, entities_list, predictions):
         # generate high level explanation using text explanations
