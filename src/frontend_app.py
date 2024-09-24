@@ -1,6 +1,8 @@
 import streamlit as st
 import requests
 from urllib.parse import urljoin
+import datetime as dt
+from typing import Union
 import default_values as dfv
 
 
@@ -9,7 +11,7 @@ st.title('Test recommendation model')
 
 st.markdown("""To test the recommender model first select the mode in the dropdown bellow and provide the data in the form
             """)
-options_reco = ['Best recommendations', 'Evaluate recipe list by id', 'Find me a recipe given ingredients',  'Provide full data']
+options_reco = ['Best recommendations', 'Evaluate recipe list by id', 'Find me a recipe given ingredients', 'partial query',  'Provide full data']
 
 reco_mode = st.selectbox('Please select a recommendation mode:',
                          options=options_reco)
@@ -83,10 +85,15 @@ context = {
         "social_situation_of_meal_consumption": "alone"
     }
 
+def process_time(time_object: Union[dt.time, None]) -> float:
+    if time_object is None:
+        return 0.0
+    return float(f"{time_object.hour}.{time_object.minute}")
+
 context["day_number"] = st.number_input("Day number:", min_value=0, max_value=10000)
 context["meal_type_y"] = st.selectbox("Meal type:", 
                                       options=list(dfv.meals_calorie_dict.keys()))
-context["time_of_meal_consumption"] = st.number_input("Time of meal consumption:", min_value=0.0, max_value=24.59)
+context["time_of_meal_consumption"] = process_time(st.time_input("Time of meal consumption: ", value="now"))
 context["place_of_meal_consumption"] = st.selectbox("Place of meal consumption", 
                                                     options=list(dfv.place_proba_dict.keys()))
 context["social_situation_of_meal_consumption"] = st.selectbox("Social situation of meal consumption:", 
@@ -127,6 +134,39 @@ elif reco_mode == options_reco[2]:
     data['profile'] = profile
     data['context'] = context
     data["ingredients"] = ingredients_text
+    st.write("Target url: %s" % target_url)
+elif reco_mode == options_reco[3]:
+    target_url = urljoin(base_url, "/partialQuery/") 
+    st.subheader("Partial recipe data")
+    partial_recipe_data = st.multiselect("Choose the features that you want to provide:",
+                                         options=list(recipe_data.keys()))
+    if 'cultural_restriction' in partial_recipe_data:
+        recipe_data['cultural_restriction'] = st.selectbox("Select the recipe cultural restriction:",
+                                                    options=dfv.recipe_restriction) 
+    if 'cultural_restriction' in partial_recipe_data:
+        recipe_data['calories']=st.number_input("Introduce recipe calories:", min_value=0.0)
+    if 'allergens' in partial_recipe_data:
+        recipe_data['allergens'] =  st.selectbox(f"Please select the recipe allergens:",
+                                options=list(dfv.allergies_queries_dict.keys()))
+    if 'taste' in partial_recipe_data:
+        recipe_data['taste'] =  st.selectbox(f"Please select recipe taste:", options=dfv.tastes)
+    if 'price' in partial_recipe_data:
+        recipe_data['price'] = st.number_input("Introduce recipe price (1= cheap, 3=expensive):", min_value=1.0, max_value=3.0, value=2.0) 
+    if 'fiber' in partial_recipe_data:
+        recipe_data['fiber'] = st.number_input("Introduce recipe fiber:", min_value=0.0)
+    if 'fat' in partial_recipe_data:
+        recipe_data['fat'] = st.number_input("Introduce recipe fat:", min_value=0.0)
+    if 'protein' in partial_recipe_data:
+        recipe_data['protein'] = st.number_input("Introduce recipe protein:", min_value=0.0)
+    if 'carbohydrates' in partial_recipe_data:
+        recipe_data['carbohydrates'] = st.number_input("Introduce recipe carbohydrates:", min_value=0.0)
+    if 'ingredient_list' in partial_recipe_data: 
+        recipe_data['ingredients'] = st.text_input("Introduce ingredients:")
+    # ADD query to the the api
+    data = {}
+    data["profile"] = profile
+    data["recipe"] = recipe_data
+    data["context"] = context 
     st.write("Target url: %s" % target_url)
 else:
     target_url = urljoin(base_url, "/checkCompatibility/")

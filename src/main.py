@@ -82,7 +82,8 @@ async def recommendation(data: Request, num_recommendations: int = 2, sample_siz
                                                                                       num_recommendations=num_recommendations, 
                                                                                       sample_size=sample_size, 
                                                                                       threshold=0.7)
-
+        recipe_id_mask = recipes_df["recipeId"].isin(topk_recommendations)
+        recipe_names = recipes_df.loc[recipe_id_mask, "name"].to_list()
         # check high values in recommendations mode
         general_explanation = explanation_service.generate_high_level_explanation(entities_list=["profile", "recipe", "context"],
                                                                                   predictions=top_pred)
@@ -102,6 +103,7 @@ async def recommendation(data: Request, num_recommendations: int = 2, sample_siz
         expa_bn = explanation_service.generate_text_explanation_from_bn_prediction(post_processed_sample)
         print(f"Bayesian Network Explanation: {expa_bn}")
         answer = {
+            "recipe_names": recipe_names,
             "recommendations": topk_recommendations,
             "general_explanation": general_explanation,
             "rule_based_explanation": expa,
@@ -154,6 +156,7 @@ async def check_new_recipe(data: Request):
 async def recommend_by_proximity(data: Request, num_recommendations: int = 2): 
     # Recommend by proximity given user query
     try:
+        recipes_df = pd.read_csv("model_assets/df_recipes.csv", sep='|', index_col=0)
         input_data  = await data.json()
         print(f"Input data: {input_data}")
         profile = input_data['profile']
@@ -164,10 +167,11 @@ async def recommend_by_proximity(data: Request, num_recommendations: int = 2):
                                                                 context=context,
                                                                 recipe_ingredients=ingredients,
                                                                 num_items=num_recommendations)
- 
+        recipe_id_mask = recipes_df["recipeId"].isin(topk_recommendations)
+        recipe_names = recipes_df.loc[recipe_id_mask, "name"].to_list()
         # check high values in recommendations mode
         general_explanation = explanation_service.generate_high_level_explanation(entities_list=["profile", "recipe", "context"],
-                                                                                  predictions=top_pred)
+                                                                                 predictions=top_pred)
         ans = {}
         for key in final_dict.keys():
             ans[key] = [final_dict[key][i] for i in topk_indices]
@@ -184,6 +188,7 @@ async def recommend_by_proximity(data: Request, num_recommendations: int = 2):
         expa_bn = explanation_service.generate_text_explanation_from_bn_prediction(post_processed_sample)
         print(f"Bayesian Network Explanation: {expa_bn}")
         answer = {
+            "recipe_names": recipe_names,
             "recommendations": topk_recommendations,
             "general_explanation": general_explanation,
             "rule_based_explanation": expa,

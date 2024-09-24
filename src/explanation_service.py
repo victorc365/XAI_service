@@ -63,7 +63,7 @@ class ExplanationService:
                 X = data_df.to_numpy()
         print(f"X: {X.shape}")
         if self.cluster_model is not None:
-            embedding = np.array(data_df[embedding_cols].tolist())
+            embedding = np.array(data_df[embedding_cols].tolist(), dtype="float")
             print(f"Embedding size:{embedding.shape}")
             if embedding.ndim == 1:
                 embedding = embedding.reshape(1, -1)
@@ -127,12 +127,12 @@ class ExplanationService:
                     for k in evidence_dict_internal.keys():
                         final_tmp[k] = evidence_dict_internal[k][i]
                     cpds = bn.inference.fit(self.bn_model, variables=["y_pred"], evidence=final_tmp)
-                    max_idx = cpds.df["phi(y_pred)"].idxmax()
-                    
-                    print(f"Predictions partial: {cpds}")
+                    max_idx = cpds.df["p"].idxmax()
+                    max_prediction = cpds.df.loc[max_idx]
+                    print(f"Predictions partial: {max_prediction.to_dict()}")
                     print("--------------------------------------------------------------------")
-                    multi_explanations.append(cpds)
-                return cpds
+                    multi_explanations.append(max_prediction.to_dict())
+                return multi_explanations
             except Exception as e:
                 print(f"An error occurred while explaining: {traceback.format_exc()}")
                 return None
@@ -211,7 +211,10 @@ class ExplanationService:
                 prediction_text = f"like with probability {np.round(raw_xai['y_pred=1'], decimals)}"
                 del raw_xai['y_pred=1']
             elif raw_xai.get("y_pred=0", None) is not None:
-                prediction_text = f"dislike with probability {np.round(1.0 - raw_xai['y_pred=0'], decimals)}"
+                if raw_xai['y_pred=0'] < 0.5:
+                    prediction_text = f"dislike with probability {np.round(1.0 - raw_xai['y_pred=0'], decimals)}"
+                else:
+                    prediction_text = f"dislike with probability {np.round(raw_xai['y_pred=0'], decimals)}"
                 del raw_xai['y_pred=0']
             sorted_xai = sorted(raw_xai.items(), key=lambda item: item[1], reverse=True)
             text_xai = []
@@ -243,6 +246,7 @@ class ExplanationService:
                 evidence_dict[key] = [evidence_dict[key]]
         # predict y with the evidence and cluster
         y_pred_partial = self.predict_with_partial_information(evidence_dict)
+        evidence_dict["y_pred"] = [int(y_pred_partial[0]["y_pred"])]
         print(f"Y partial: {y_pred_partial}")
         explanation_bayesian_network = self.generate_text_explanation_from_bn_prediction(evidence_dict=evidence_dict)
         return explanation_bayesian_network
