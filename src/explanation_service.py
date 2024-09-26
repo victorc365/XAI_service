@@ -15,6 +15,8 @@ from dexire.core.rule import Rule
 from dexire.core.clause import ConjunctiveClause, DisjunctiveClause
 from dexire.core.expression import Expr
 
+import default_values as dfv
+
 class ExplanationService:
     def __init__(self):
         self.rule_set = None
@@ -52,8 +54,11 @@ class ExplanationService:
         print(f"Discretized dict loaded successfully!")
         
     def data_preprocessing_for_rules(self, data: dict, transformer: Any = None, embedding_cols: str="") -> dict:
+        # check safety
         data_df = pd.DataFrame.from_dict(data, orient='index').T
         print(f"Data df:{data_df}")
+        data_df['allergy'] = data_df['allergy'].apply(lambda x: x if x in dfv.safety_allergies else dfv.safety_allergies[0])
+        data_df['meal_type_y'] = data_df['meal_type_y'].apply(lambda x: x if x in dfv.safety_allergies else 'NotInformation')
         if self.rule_preprocessing is not None:
             X =  self.rule_preprocessing.transform(data_df)
         else:
@@ -157,6 +162,17 @@ class ExplanationService:
                 for cause in evidence_dict_internal.keys():
                     try:
                         print(f"Cause: {cause}:")
+                        # check safety 
+                        if cause == 'allergy':
+                            if evidence_dict_internal[cause][i] in dfv.safety_allergies:
+                                evidence_dict_internal[cause][i] = evidence_dict_internal[cause][i]
+                            else:
+                                evidence_dict_internal[cause][i] = dfv.safety_allergies[0]
+                        if cause == 'meal_type_y':
+                            if evidence_dict_internal[cause][i] in dfv.meal_type_y:
+                                evidence_dict_internal[cause][i] = evidence_dict_internal[cause][i]
+                            else:
+                                evidence_dict_internal[cause][i] = 'NotInformation'
                         if cause in evidence_dict_internal.keys():
                             tem_evident_dict = evidence_dict_internal.copy()
                             print(f"Evidence: {evidence_dict_internal[cause][i]}")

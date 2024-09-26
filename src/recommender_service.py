@@ -6,7 +6,8 @@ from model_utils import identify_data_types
 import pandas as pd
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_distances
-
+import default_values as dfv
+#TODO: implement safety check on categorical inputs to the model
 class RecommenderService:
     def __init__(self, model_path) -> None:
         self.model = tf.keras.models.load_model(model_path)
@@ -32,7 +33,24 @@ class RecommenderService:
     def transform_input_data(self, data: Dict[str, str]) -> Dict[str, Any]:
         data_dict = {}
         input_data_types = self.get_model_inputs_and_type()
+        # check safety for users 
         for key, value in data.items():
+            if key == 'allergy':
+                converted_value = []
+                for item in value:
+                    if item in dfv.safety_allergies:
+                        converted_value.append(item)
+                    else:
+                        converted_value.append(dfv.safety_allergies[0])
+                value = converted_value
+            if key == 'meal_type_y':
+                converted_value = []
+                for item in value:
+                    if item in dfv.meal_type_y:
+                        converted_value.append(item)
+                    else:
+                        converted_value.append('NotInformation')
+                value = converted_value
             if key in input_data_types.keys():
                 data_dict[key] = tf.convert_to_tensor(value, dtype=input_data_types[key], name=key)
         return data_dict 
@@ -68,6 +86,7 @@ class RecommenderService:
                                 recipe_id_col: str = 'recipeId'):
         try:
             if self.model is not None:
+                # safe allergy user 
                 final_dict = {}
                 # generate_embeddings
                 recipes_df['embeddings'] = recipes_df[recipe_id_col].apply(lambda x: self.get_embedding_for_recipe_id(x))
