@@ -9,20 +9,58 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 import pandas as pd
 from sentence_transformers import SentenceTransformer
+import pathlib as pth
+import os
 
 
-# Init objects
-recommender_service = RecommenderService("model_assets/model_full_use__fold_0.tf")
-recommender_service.load_embedding_transformer()
+base_path = pth.Path(__file__).parent
+model_path = os.path.join(base_path, 
+                          "model_assets", 
+                          "training_model_0_use_full_inputs_user_food_context_input_shape_new_x_bert_regression.tf")
+recommender_service = RecommenderService(model_path)
 model_inputs_and_type = recommender_service.get_model_inputs_and_type()
 print(model_inputs_and_type)
-recommender_service.load_embeddings("model_assets/full_recipe_embedding_BERT_v2_17_may_recipeId.npz")
+precomputed_embeddings = os.path.join(base_path, 
+                                      "model_assets",
+                                      "full_recipe_embedding_BERT_v2_17_may_recipeId.npz")
+recommender_service.load_embeddings(precomputed_embeddings)
+columns_dict = recommender_service.get_model_data_types()
+print(columns_dict)
+# Explanation services
 explanation_service = ExplanationService()
-explanation_service.load_cluster_model('model_assets/new_experiment_bert_cluster_full_model.pkl')
-explanation_service.load_rule_set('model_assets/new_experiments_ruleset_bert_0.pkl')
-explanation_service.load_bn_model('model_assets/bn_model_bert.pkl')
-explanation_service.load_rule_set_preprocessing('model_assets/preprocessor_rule.pkl')
+cluster_path = os.path.join(base_path,
+                            "model_assets",
+                            "new_experiment_complex_model_bert_cluster_full_model.pkl")
+explanation_service.load_cluster_model(cluster_path)
+path_to_ruleset = os.path.join(base_path,
+                                "model_assets",
+                                "new_experiments_ruleset_bert_0_Full_model.pkl")
+explanation_service.load_rule_set(path_to_ruleset)
+path_preprocessing_ruleset = os.path.join(base_path,
+                                          "model_assets",
+                                          "preprocessor_rules_new_model_bert.pkl")
+explanation_service.load_rule_set_preprocessing(path_preprocessing_ruleset)
+path_to_bn_learn = os.path.join(base_path,
+                                "model_assets",
+                                "bn_learn_model_bert_0_Full_model.pkl")
+explanation_service.load_bn_model(path_to_bn_learn)
+#TODO: load preprocessing for bn and create a preprocessing function for the bn model 
 explanation_service.load_discretized_dict('model_assets/discretize_dict.pkl')
+
+
+# Init prediction objects
+# recommender_service = RecommenderService("model_assets/model_full_use__fold_0.tf")
+# recommender_service.load_embedding_transformer()
+# model_inputs_and_type = recommender_service.get_model_inputs_and_type()
+# print(model_inputs_and_type)
+# recommender_service.load_embeddings("model_assets/full_recipe_embedding_BERT_v2_17_may_recipeId.npz")
+# explanation_service = ExplanationService()
+# explanation_service.load_cluster_model('model_assets/new_experiment_bert_cluster_full_model.pkl')
+# explanation_service.load_rule_set('model_assets/new_experiments_ruleset_bert_0.pkl')
+# explanation_service.load_bn_model('model_assets/bn_model_bert.pkl')
+# explanation_service.load_rule_set_preprocessing('model_assets/preprocessor_rule.pkl')
+# explanation_service.load_discretized_dict('model_assets/discretize_dict.pkl')
+
 model_bert_st = SentenceTransformer('bert-base-nli-mean-tokens')
 
 

@@ -1,8 +1,11 @@
 import traceback
+import os 
+import sys
+import pathlib as pth
 import dill
 import pickle
 import bnlearn as bn
-from typing import Any, Union, List, Tuple
+from typing import Any, Union, List, Tuple, Dict
 from dexire_pro.core.clustering_explanations import ClusterAnalysis
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
@@ -16,6 +19,21 @@ from dexire.core.clause import ConjunctiveClause, DisjunctiveClause
 from dexire.core.expression import Expr
 
 import default_values as dfv
+
+
+import re
+def replace_bad_characters(text: str):
+  new_text = text.lower()
+  new_text = new_text.replace('.', '')
+  new_text = re.sub(' +', '_', new_text)
+  new_text = new_text.replace(';', '_')
+  new_text = new_text.replace(',', '_')
+  new_text = new_text.replace(' ', '_')
+  new_text = new_text.replace('/', '_')
+  new_text = new_text.replace('-', '_')
+  #new_text = text.translate(str.maketrans('', '', string.punctuation))
+  return new_text
+
 
 class ExplanationService:
     def __init__(self):
@@ -46,19 +64,24 @@ class ExplanationService:
         
     def load_rule_set_preprocessing(self, preprocessing_path: str) -> dict:
         with open(preprocessing_path, 'rb') as f:
-            self.rule_preprocessing = joblib.load(f)
+            self.rule_preprocessing = dill.load(f)
             
     def load_discretized_dict(self, dict_path: str) -> None:
         with open(dict_path, 'rb') as f:
             self.discretized_dict = dill.load(f)
         print(f"Discretized dict loaded successfully!")
         
+    def load_bn_preprocessing(self, preprocessing_path: str) -> dict:
+        #TODO: test this module
+        with open(preprocessing_path, 'rb') as f:
+            self.bn_model_preprocessing = dill.load(f)
+        
     def data_preprocessing_for_rules(self, data: dict, transformer: Any = None, embedding_cols: str="") -> dict:
         # check safety
         data_df = pd.DataFrame.from_dict(data, orient='index').T
         print(f"Data df:{data_df}")
         data_df['allergy'] = data_df['allergy'].apply(lambda x: x if x in dfv.safety_allergies else dfv.safety_allergies[0])
-        data_df['meal_type_y'] = data_df['meal_type_y'].apply(lambda x: x if x in dfv.safety_allergies else 'NotInformation')
+        #data_df['meal_type_y'] = data_df['meal_type_y'].apply(lambda x: x if x in dfv.safety_allergies else 'NotInformation')
         if self.rule_preprocessing is not None:
             X =  self.rule_preprocessing.transform(data_df)
         else:
@@ -79,6 +102,30 @@ class ExplanationService:
             X_final = X
             print(f"X: {X.shape}, {X_final.shape} X_final")
         return X_final
+    
+    def data_preprocessing_for_bn_with_pipeline(self, 
+                                                data: Dict[str, List[Any]], 
+                                                embedding_cols="embeddings"):
+        data_df = pd.DataFrame.from_dict(data, orient='index').T
+        print(f"Data df:{data_df}")
+        print(f"Data frame shape: {data_df.shape}")
+        embedding = np.array(data_df[embedding_cols].tolist(), dtype="float")
+        print(f"Embedding size:{embedding.shape}")
+        if embedding.ndim == 1:
+            embedding = embedding.reshape(1, -1)
+        cluster = self.cluster_model.predict(embedding)
+        print(f"cluster: {cluster}")
+        data_df["cluster"] = cluster
+        #TODO: check security
+        x_out = None
+        if self.bn_model_preprocessing is not None:
+            x_out = self.bn_model_preprocessing.transform(data_df)
+            feature_names = self.bn_model_preprocessing.get_feature_names_out()
+            transformed_feature_names = [replace_bad_characters(feat) for feat in feature_names]
+            x_out_df = pd.DataFrame(data=x_out, columns=transformed_feature_names)
+            return x_out_df
+        else:
+            return data
     
     def data_preprocessing_for_bn(self, data: dict) -> dict:
         new_data = data.copy()
@@ -283,10 +330,18 @@ class ExplanationService:
         
     
 if __name__ == "__main__":
-    recommender_service = RecommenderService("model_assets/model_full_use__fold_0.tf")
+    base_path = pth.Path(__file__).parent.parent
+    print(f"Base path: {base_path}")
+    model_path = os.path.join(base_path, 
+                              "model_assets", 
+                              "training_model_0_use_full_inputs_user_food_context_input_shape_new_x_bert_regression.tf")
+    recommender_service = RecommenderService(model_path)
     model_inputs_and_type = recommender_service.get_model_inputs_and_type()
     print(model_inputs_and_type)
-    recommender_service.load_embeddings("model_assets/full_recipe_embedding_BERT_v2_17_may_recipeId.npz")
+    precomputed_embeddings = os.path.join(base_path, 
+                                          "model_assets",
+                                          "full_recipe_embedding_BERT_v2_17_may_recipeId.npz")
+    recommender_service.load_embeddings(precomputed_embeddings)
     # example 
     sample = {'BMI': ['healthy'], 
      'age_range': ['30-39'], 
@@ -307,7 +362,7 @@ if __name__ == "__main__":
      'height': [165], 
      'life_style': ['Sedentary'], 
      'marital_status': ['Single'], 
-     'meal_type_y': ['lunch'], 
+     'meal_type_x': ['lunch'], 
      'next_BMI': ['healthy'],  
      'nutrition_goal': ['maintain_fit'], 
      'place_of_meal_consumption': ['home'], 
@@ -324,11 +379,28 @@ if __name__ == "__main__":
     print(columns_dict)
     # Explanation
     explanation_service = ExplanationService()
-    explanation_service.load_cluster_model('model_assets/new_experiment_bert_cluster_full_model.pkl')
-    explanation_service.load_rule_set('model_assets/new_experiments_ruleset_bert_0.pkl')
-    explanation_service.load_bn_model('model_assets/bn_model_bert.pkl')
-    explanation_service.load_rule_set_preprocessing('model_assets/preprocessor_rule.pkl')
-    explanation_service.load_discretized_dict('model_assets/discretize_dict.pkl')
+    cluster_path = os.path.join(base_path,
+                                "model_assets",
+                                "new_experiment_complex_model_bert_cluster_full_model.pkl")
+    explanation_service.load_cluster_model(cluster_path)
+    path_to_ruleset = os.path.join(base_path,
+                                   "model_assets",
+                                   "new_experiments_ruleset_bert_0_Full_model.pkl")
+    explanation_service.load_rule_set(path_to_ruleset)
+    path_preprocessing_ruleset = os.path.join(base_path,
+                                              "model_assets",
+                                              "preprocessor_rules_new_model_bert.pkl")
+    explanation_service.load_rule_set_preprocessing(path_preprocessing_ruleset)
+    path_to_bn_learn = os.path.join(base_path,
+                                    "model_assets",
+                                    "bn_learn_model_bert_0_Full_model.pkl")
+    explanation_service.load_bn_model(path_to_bn_learn)
+    path_to_bn_learn_preprocessor = os.path.join(base_path,
+                                                 "model_assets",
+                                                 "preprocessor_bn_bert_0_Full_model.pkl")
+    explanation_service.load_bn_preprocessing(path_to_bn_learn_preprocessor)
+    #TODO: load preprocessing for bn and create a preprocessing function for the bn model 
+    # explanation_service.load_discretized_dict('model_assets/discretize_dict.pkl')
     # transform sample 
     X_final = explanation_service.data_preprocessing_for_rules(sample, embedding_cols='embeddings')
     #X_final = np.repeat(X_final, 4, axis=0)
@@ -338,10 +410,18 @@ if __name__ == "__main__":
     print(f"Explanation: {rule_prediction}")
     expa = explanation_service.generate_text_explanation_from_rule_prediction(rule_prediction)
     print(f"Text Explanation: {expa}")
-    processed_sample =sample.copy()
+    processed_sample = sample.copy()
     processed_sample.update({'y_pred': rule_prediction[0]})
-    post_processed_sample = explanation_service.data_preprocessing_for_bn(processed_sample)
-    print(f"Post: {post_processed_sample}")
-    expa_bn = explanation_service.explanation_bayesian_network(post_processed_sample)
+    X_bn_learn = explanation_service.data_preprocessing_for_bn_with_pipeline(processed_sample)
+    print(f"post processing: {X_bn_learn}")
+    X_bn_learn_dict = X_bn_learn.to_dict(orient="list")
+    print(f"dict from df: {X_bn_learn_dict}")
+    expa_bn = explanation_service.explanation_bayesian_network(X_bn_learn_dict)
     print(f"Bayesian Network Explanation: {expa_bn}")
+    # processed_sample = sample.copy()
+    # processed_sample.update({'y_pred': rule_prediction[0]})
+    # post_processed_sample = explanation_service.data_preprocessing_for_bn(processed_sample)
+    # print(f"Post: {post_processed_sample}")
+    # expa_bn = explanation_service.explanation_bayesian_network(post_processed_sample)
+    # print(f"Bayesian Network Explanation: {expa_bn}")
     
