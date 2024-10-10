@@ -35,6 +35,46 @@ def replace_bad_characters(text: str):
   return new_text
 
 
+def get_output_to_input_mapping(column_transformer, input_features):
+    """
+    Returns a dictionary mapping the output feature names to the corresponding input feature names.
+    This handles transformers like OneHotEncoder that expand a single input feature into multiple output features.
+    """
+    mapping = {}
+    
+    idx = 0  # Initialize the output feature index
+    
+    for name, transformer, columns in column_transformer.transformers_:
+        print(f"name: {name}")
+        if transformer == 'drop':
+            continue
+        elif transformer == 'passthrough':
+            for col in columns:
+                mapping[col] = col
+        else:
+            if hasattr(transformer, 'get_feature_names_out'):
+                # Get transformed feature names with proper prefixes (e.g., OneHotEncoder)
+                transformed_names = transformer.get_feature_names_out(columns)
+                print(f"transformed_names: {transformed_names}")
+                for col in columns:
+                    mapping[col] = []
+                    for trans_name in transformed_names:
+                        if col in trans_name:
+                            print(f"coincidence: {trans_name}")
+                            if name in ['discretize', 'text']:
+                                mapping[col].append(f"{name}__{name}__{trans_name}")
+                            else:
+                                mapping[col].append(f"{name}__{trans_name}")
+            else:
+                # For transformers like StandardScaler that don't change names
+                for col in columns:
+                    mapping[col] = col
+    
+    # Create the dictionary from output names to input names
+    return mapping
+
+
+
 class ExplanationService:
     def __init__(self):
         self.rule_set = None
@@ -125,6 +165,7 @@ class ExplanationService:
             x_out_df = pd.DataFrame(data=x_out, columns=transformed_feature_names)
             return x_out_df
         else:
+            print(f"missing transformed pipeline")
             return data
     
     def data_preprocessing_for_bn(self, data: dict) -> dict:
@@ -178,7 +219,7 @@ class ExplanationService:
                     final_tmp = {}
                     for k in evidence_dict_internal.keys():
                         final_tmp[k] = evidence_dict_internal[k][i]
-                    cpds = bn.inference.fit(self.bn_model, variables=["y_pred"], evidence=final_tmp)
+                    cpds = bn.inference.fit(self.bn_model, variables=["identity__y_pred"], evidence=final_tmp)
                     max_idx = cpds.df["p"].idxmax()
                     max_prediction = cpds.df.loc[max_idx]
                     print(f"Predictions partial: {max_prediction.to_dict()}")
@@ -210,16 +251,6 @@ class ExplanationService:
                     try:
                         print(f"Cause: {cause}:")
                         # check safety 
-                        if cause == 'allergy':
-                            if evidence_dict_internal[cause][i] in dfv.safety_allergies:
-                                evidence_dict_internal[cause][i] = evidence_dict_internal[cause][i]
-                            else:
-                                evidence_dict_internal[cause][i] = dfv.safety_allergies[0]
-                        if cause == 'meal_type_y':
-                            if evidence_dict_internal[cause][i] in dfv.meal_type_y:
-                                evidence_dict_internal[cause][i] = evidence_dict_internal[cause][i]
-                            else:
-                                evidence_dict_internal[cause][i] = 'NotInformation'
                         if cause in evidence_dict_internal.keys():
                             tem_evident_dict = evidence_dict_internal.copy()
                             print(f"Evidence: {evidence_dict_internal[cause][i]}")
@@ -243,6 +274,46 @@ class ExplanationService:
             return multi_explanations
         else:
             raise ValueError("BN model not loaded.")
+        
+    def partial_bn_explanation_transform(self, data_dict: Dict[str, List[Any]], embedding_key: str = "embeddings"):
+        if embedding_key in data_dict.keys():
+            if self.cluster_model is not None:
+                embedding = np.array(data_dict[embedding_key], dtype="float64")
+                print(f"Embedding shape {embedding.shape}")
+                if embedding.ndim == 1:
+                    embedding = embedding.reshape(1, -1)
+                cluster = self.cluster_model.predict(embedding)
+                print(f"cluster: {cluster}")
+                del data_dict[embedding_key]
+                data_dict["cluster"] = [cluster[0]]
+        template_dict = dfv.default_sample.copy()
+        keys = list(data_dict.keys())
+        print(f"keys: {keys}")
+        for key in template_dict.keys():
+            if key in data_dict.keys():
+                template_dict[key] = data_dict[key]
+        # transform data  
+        if self.bn_model_preprocessing is not None:
+            # transform data in dataframe
+            data_df = pd.DataFrame.from_dict(template_dict, orient='index').T
+            # getting named transformers and transform columns
+            x_out = self.bn_model_preprocessing.transform(data_df)
+            feature_names = self.bn_model_preprocessing.get_feature_names_out()
+            transformed_feature_names = [replace_bad_characters(feat) for feat in feature_names]
+            x_out_df = pd.DataFrame(data=x_out, columns=transformed_feature_names)
+            answer_dict = x_out_df.to_dict(orient='list')
+            # get mapping between input and output features
+            # filter original  keys vs dict 
+            final_dict = {}
+            for key in keys:
+                for trans_name in answer_dict.keys():
+                    if key.lower() in trans_name:
+                        print(f"match: {trans_name}")
+                        final_dict[trans_name] = answer_dict[trans_name]
+            print(f"answer_dict: {final_dict}")
+            return final_dict
+        else:
+            return data_dict
         
     def generate_text_explanation_from_rule_prediction(self, rule_prediction: Tuple[List[np.array], List[Rule]]) -> str:
         explanations =[]
@@ -270,15 +341,15 @@ class ExplanationService:
         prediction_text = ""
         for raw_xai in raw_explanation:
             # sort from proba 
-            if raw_xai.get("y_pred=1", None) is not None:
-                prediction_text = f"like with probability {np.round(raw_xai['y_pred=1'], decimals)}"
-                del raw_xai['y_pred=1']
-            elif raw_xai.get("y_pred=0", None) is not None:
-                if raw_xai['y_pred=0'] < 0.5:
-                    prediction_text = f"dislike with probability {np.round(1.0 - raw_xai['y_pred=0'], decimals)}"
+            if raw_xai.get("identity__y_pred=1", None) is not None:
+                prediction_text = f"like with probability {np.round(raw_xai['identity__y_pred=1'], decimals)}"
+                del raw_xai['identity__y_pred=1']
+            elif raw_xai.get("identity__y_pred=0", None) is not None:
+                if raw_xai['identity__y_pred=0'] < 0.5:
+                    prediction_text = f"dislike with probability {np.round(1.0 - raw_xai['identity__y_pred=0'], decimals)}"
                 else:
-                    prediction_text = f"dislike with probability {np.round(raw_xai['y_pred=0'], decimals)}"
-                del raw_xai['y_pred=0']
+                    prediction_text = f"dislike with probability {np.round(raw_xai['identity__y_pred=0'], decimals)}"
+                del raw_xai['identity__y_pred=0']
             sorted_xai = sorted(raw_xai.items(), key=lambda item: item[1], reverse=True)
             text_xai = []
             for t in sorted_xai:
@@ -293,24 +364,18 @@ class ExplanationService:
         # first predict y with the evidence 
         evidence_dict = evidence.copy()
         # extract cluster
-        if embedding_key in evidence_dict.keys():
-            if self.cluster_model is not None:
-                embedding = np.array(evidence_dict[embedding_key], dtype="float64")
-                print(f"Embedding shape {embedding.shape}")
-                if embedding.ndim == 1:
-                    embedding = embedding.reshape(1, -1)
-                cluster = self.cluster_model.predict(embedding)
-                print(f"cluster: {cluster}")
-                del evidence_dict[embedding_key]
-                evidence_dict["cluster"] = cluster[0]
+        evidence_dict = self.partial_bn_explanation_transform(evidence_dict, embedding_key)
+        print(f"{evidence_dict.keys()} dict before")
         # prepare the evidence dictionary
         for key in evidence_dict.keys():
             if not isinstance(evidence_dict[key], List):
                 evidence_dict[key] = [evidence_dict[key]]
         # predict y with the evidence and cluster
-        y_pred_partial = self.predict_with_partial_information(evidence_dict)
-        evidence_dict["y_pred"] = [int(y_pred_partial[0]["y_pred"])]
+        print(f"{evidence_dict.keys()} dict before prediction")
+        y_pred_partial = self.predict_with_partial_information(evidence_dict.copy())
+        evidence_dict["identity__y_pred"] = [int(y_pred_partial[0]["identity__y_pred"])]
         print(f"Y partial: {y_pred_partial}")
+        print(f"dict after prediction: {evidence_dict.keys()}")
         explanation_bayesian_network = self.generate_text_explanation_from_bn_prediction(evidence_dict=evidence_dict)
         return explanation_bayesian_network
         

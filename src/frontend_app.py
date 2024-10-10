@@ -79,7 +79,7 @@ st.subheader("Context data", divider=True)
 st.write("Please complete the context:")
 context = {
         "day_number": 1,
-        "meal_type_y": "lunch",
+        "meal_type_x": "lunch",
         "time_of_meal_consumption": 12.01,
         "place_of_meal_consumption": "home",
         "social_situation_of_meal_consumption": "alone"
@@ -91,7 +91,7 @@ def process_time(time_object: Union[dt.time, None]) -> float:
     return float(f"{time_object.hour}.{time_object.minute}")
 
 context["day_number"] = st.number_input("Day number:", min_value=0, max_value=10000)
-context["meal_type_y"] = st.selectbox("Meal type:", 
+context["meal_type_x"] = st.selectbox("Meal type:", 
                                       options=list(dfv.meals_calorie_dict.keys()))
 context["time_of_meal_consumption"] = process_time(st.time_input("Time of meal consumption: ", value="now"))
 context["place_of_meal_consumption"] = st.selectbox("Place of meal consumption", 

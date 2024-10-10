@@ -11,11 +11,13 @@ import pandas as pd
 from sentence_transformers import SentenceTransformer
 import pathlib as pth
 import os
+import numpy as np
 
-
-base_path = pth.Path(__file__).parent
+# loading 
+base_path = pth.Path(__file__).parent.parent
+print(f"Base path: {base_path}")
 model_path = os.path.join(base_path, 
-                          "model_assets", 
+                          "model_assets",
                           "training_model_0_use_full_inputs_user_food_context_input_shape_new_x_bert_regression.tf")
 recommender_service = RecommenderService(model_path)
 model_inputs_and_type = recommender_service.get_model_inputs_and_type()
@@ -24,9 +26,8 @@ precomputed_embeddings = os.path.join(base_path,
                                       "model_assets",
                                       "full_recipe_embedding_BERT_v2_17_may_recipeId.npz")
 recommender_service.load_embeddings(precomputed_embeddings)
-columns_dict = recommender_service.get_model_data_types()
-print(columns_dict)
-# Explanation services
+recommender_service.load_embedding_transformer()
+# Explanation
 explanation_service = ExplanationService()
 cluster_path = os.path.join(base_path,
                             "model_assets",
@@ -37,29 +38,17 @@ path_to_ruleset = os.path.join(base_path,
                                 "new_experiments_ruleset_bert_0_Full_model.pkl")
 explanation_service.load_rule_set(path_to_ruleset)
 path_preprocessing_ruleset = os.path.join(base_path,
-                                          "model_assets",
-                                          "preprocessor_rules_new_model_bert.pkl")
+                                        "model_assets",
+                                        "preprocessor_rules_new_model_bert.pkl")
 explanation_service.load_rule_set_preprocessing(path_preprocessing_ruleset)
-path_to_bn_learn = os.path.join(base_path,
+path_to_bn_learn_model = os.path.join(base_path,
                                 "model_assets",
                                 "bn_learn_model_bert_0_Full_model.pkl")
-explanation_service.load_bn_model(path_to_bn_learn)
-#TODO: load preprocessing for bn and create a preprocessing function for the bn model 
-explanation_service.load_discretized_dict('model_assets/discretize_dict.pkl')
-
-
-# Init prediction objects
-# recommender_service = RecommenderService("model_assets/model_full_use__fold_0.tf")
-# recommender_service.load_embedding_transformer()
-# model_inputs_and_type = recommender_service.get_model_inputs_and_type()
-# print(model_inputs_and_type)
-# recommender_service.load_embeddings("model_assets/full_recipe_embedding_BERT_v2_17_may_recipeId.npz")
-# explanation_service = ExplanationService()
-# explanation_service.load_cluster_model('model_assets/new_experiment_bert_cluster_full_model.pkl')
-# explanation_service.load_rule_set('model_assets/new_experiments_ruleset_bert_0.pkl')
-# explanation_service.load_bn_model('model_assets/bn_model_bert.pkl')
-# explanation_service.load_rule_set_preprocessing('model_assets/preprocessor_rule.pkl')
-# explanation_service.load_discretized_dict('model_assets/discretize_dict.pkl')
+explanation_service.load_bn_model(path_to_bn_learn_model)
+path_to_bn_learn_preprocessor = os.path.join(base_path,
+                                                "model_assets",
+                                                "preprocessor_bn_bert_0_Full_model.pkl")
+explanation_service.load_bn_preprocessing(path_to_bn_learn_preprocessor)
 
 model_bert_st = SentenceTransformer('bert-base-nli-mean-tokens')
 
@@ -94,11 +83,12 @@ def root():
     return {"message": "Welcome to the recommendation and explanation model API"}
 
 @app.get("/healthcheck/")
-def healthcheck():
+def healthCheck():
     return {"status": "OK"}
 
 @app.post("/recommendation/")
 async def recommendation(data: Request, num_recommendations: int = 2, sample_size: int = 100):
+    #TODO: completed ready to check only to check security
     try:
         input_data = await data.json()
         print(f"input data: {input_data}")
@@ -132,19 +122,21 @@ async def recommendation(data: Request, num_recommendations: int = 2, sample_siz
         X_final = explanation_service.data_preprocessing_for_rules(ans, embedding_cols='embeddings')
         print(X_final.shape)
         rule_prediction = explanation_service.explain_decision_with_rules(X_final)
-        expa = explanation_service.generate_text_explanation_from_rule_prediction(rule_prediction)
-        print(f"Text Explanation: {expa}")
+        rule_explanation = explanation_service.generate_text_explanation_from_rule_prediction(rule_prediction)
+        print(f"Text Explanation: {rule_explanation}")
         processed_sample = ans.copy()
         processed_sample.update({'y_pred': rule_prediction[0]})
-        post_processed_sample = explanation_service.data_preprocessing_for_bn(processed_sample)
-        print(f"Post: {post_processed_sample}")
-        expa_bn = explanation_service.generate_text_explanation_from_bn_prediction(post_processed_sample)
+        X_bn_learn = explanation_service.data_preprocessing_for_bn_with_pipeline(processed_sample)
+        print(f"post processing: {X_bn_learn}")
+        X_bn_learn_dict = X_bn_learn.to_dict(orient="list")
+        print(f"dict from df: {X_bn_learn_dict}")
+        expa_bn = explanation_service.generate_text_explanation_from_bn_prediction(X_bn_learn_dict)
         print(f"Bayesian Network Explanation: {expa_bn}")
         answer = {
             "recipe_names": recipe_names,
             "recommendations": topk_recommendations,
             "general_explanation": general_explanation,
-            "rule_based_explanation": expa,
+            "rule_based_explanation": rule_explanation,
             "probabilistic_explanation": expa_bn
         }
         answer_encode = jsonable_encoder(answer)
@@ -174,9 +166,11 @@ async def check_new_recipe(data: Request):
         print(f"Text Explanation: {expa}")
         processed_sample = final_dict.copy()
         processed_sample.update({'y_pred': rule_prediction[0]})
-        post_processed_sample = explanation_service.data_preprocessing_for_bn(processed_sample)
-        print(f"Post: {post_processed_sample}")
-        expa_bn = explanation_service.generate_text_explanation_from_bn_prediction(post_processed_sample)
+        X_bn_learn = explanation_service.data_preprocessing_for_bn_with_pipeline(processed_sample)
+        print(f"post processing: {X_bn_learn}")
+        X_bn_learn_dict = X_bn_learn.to_dict(orient="list")
+        print(f"dict from df: {X_bn_learn_dict}")
+        expa_bn = explanation_service.generate_text_explanation_from_bn_prediction(X_bn_learn_dict)
         print(f"Bayesian Network Explanation: {expa_bn}")
         answer = {
             "recommendations": [],
@@ -221,9 +215,11 @@ async def recommend_by_proximity(data: Request, num_recommendations: int = 2):
         print(f"Text Explanation: {expa}")
         processed_sample = ans.copy()
         processed_sample.update({'y_pred': rule_prediction[0]})
-        post_processed_sample = explanation_service.data_preprocessing_for_bn(processed_sample)
-        print(f"Post: {post_processed_sample}")
-        expa_bn = explanation_service.generate_text_explanation_from_bn_prediction(post_processed_sample)
+        X_bn_learn = explanation_service.data_preprocessing_for_bn_with_pipeline(processed_sample)
+        print(f"post processing: {X_bn_learn}")
+        X_bn_learn_dict = X_bn_learn.to_dict(orient="list")
+        print(f"dict from df: {X_bn_learn_dict}")
+        expa_bn = explanation_service.generate_text_explanation_from_bn_prediction(X_bn_learn_dict)
         print(f"Bayesian Network Explanation: {expa_bn}")
         answer = {
             "recipe_names": recipe_names,
@@ -258,8 +254,11 @@ async def partialQuery(data: Request):
         processed_sample.update(user_profile)
         processed_sample.update(context)
         processed_sample.update(partial_recipe)
-        post_processed_sample = explanation_service.data_preprocessing_for_bn(processed_sample)
-        partial_explanation = explanation_service.generate_partial_explanation_and_predictions(post_processed_sample)
+        for key in processed_sample.keys():
+            if not isinstance(processed_sample[key], (list, np.ndarray)):
+                processed_sample[key] = [processed_sample[key]]
+        #TODO: Adapt current code for partial query with the new method 
+        partial_explanation = explanation_service.generate_partial_explanation_and_predictions(processed_sample)
         answer = {
             "partial_probabilistic_explanation": partial_explanation
         }
@@ -273,6 +272,7 @@ async def partialQuery(data: Request):
 
 @app.post("/recommend/")
 async def predict_items(data: Request, num_recommendations: int = 2):
+    #TODO: restructure or remove it.
     try:
         input_data = await data.json()
         print(f"Input data: {input_data}")
@@ -299,9 +299,11 @@ async def predict_items(data: Request, num_recommendations: int = 2):
         print(f"Text Explanation: {expa}")
         processed_sample = new_data.copy()
         processed_sample.update({'y_pred': rule_prediction[0]})
-        post_processed_sample = explanation_service.data_preprocessing_for_bn(processed_sample)
-        print(f"Post: {post_processed_sample}")
-        expa_bn = explanation_service.generate_text_explanation_from_bn_prediction(post_processed_sample)
+        X_bn_learn = explanation_service.data_preprocessing_for_bn_with_pipeline(processed_sample)
+        print(f"post processing: {X_bn_learn}")
+        X_bn_learn_dict = X_bn_learn.to_dict(orient="list")
+        print(f"dict from df: {X_bn_learn_dict}")
+        expa_bn = explanation_service.generate_text_explanation_from_bn_prediction(X_bn_learn_dict)
         print(f"Bayesian Network Explanation: {expa_bn}")
         answer  = {"reco_idx": reco_index.tolist(),
                    "rule_explanation": expa,
@@ -310,6 +312,7 @@ async def predict_items(data: Request, num_recommendations: int = 2):
         return JSONResponse(content=answer_encoded)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred while predicting items: {str(e)}")
+
 
 
 if __name__ == "__main__":

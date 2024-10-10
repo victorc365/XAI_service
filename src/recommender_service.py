@@ -122,6 +122,7 @@ class RecommenderService:
     def check_compatibility(self, user_profile, context, recipe_data):
         #TODO: Implement this method to check the compatibility of user profile context and recipe data
         #TODO: Impute missing values for new recipes with know recipes
+        #TODO: Control when is not a transformer for this  
         # Transform ingredients 
         ingredients = recipe_data["ingredients"]
         new_recipe_data = {}
