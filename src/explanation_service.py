@@ -35,46 +35,6 @@ def replace_bad_characters(text: str):
   return new_text
 
 
-def get_output_to_input_mapping(column_transformer, input_features):
-    """
-    Returns a dictionary mapping the output feature names to the corresponding input feature names.
-    This handles transformers like OneHotEncoder that expand a single input feature into multiple output features.
-    """
-    mapping = {}
-    
-    idx = 0  # Initialize the output feature index
-    
-    for name, transformer, columns in column_transformer.transformers_:
-        print(f"name: {name}")
-        if transformer == 'drop':
-            continue
-        elif transformer == 'passthrough':
-            for col in columns:
-                mapping[col] = col
-        else:
-            if hasattr(transformer, 'get_feature_names_out'):
-                # Get transformed feature names with proper prefixes (e.g., OneHotEncoder)
-                transformed_names = transformer.get_feature_names_out(columns)
-                print(f"transformed_names: {transformed_names}")
-                for col in columns:
-                    mapping[col] = []
-                    for trans_name in transformed_names:
-                        if col in trans_name:
-                            print(f"coincidence: {trans_name}")
-                            if name in ['discretize', 'text']:
-                                mapping[col].append(f"{name}__{name}__{trans_name}")
-                            else:
-                                mapping[col].append(f"{name}__{trans_name}")
-            else:
-                # For transformers like StandardScaler that don't change names
-                for col in columns:
-                    mapping[col] = col
-    
-    # Create the dictionary from output names to input names
-    return mapping
-
-
-
 class ExplanationService:
     def __init__(self):
         self.rule_set = None
@@ -107,6 +67,7 @@ class ExplanationService:
             self.rule_preprocessing = dill.load(f)
             
     def load_discretized_dict(self, dict_path: str) -> None:
+        # Only maintained for backwards compatibility
         with open(dict_path, 'rb') as f:
             self.discretized_dict = dill.load(f)
         print(f"Discretized dict loaded successfully!")
@@ -169,6 +130,7 @@ class ExplanationService:
             return data
     
     def data_preprocessing_for_bn(self, data: dict) -> dict:
+        # old only preserved for backwards compatibility
         new_data = data.copy()
         if self.discretized_dict is not None:
             for key in data.keys():
@@ -180,6 +142,7 @@ class ExplanationService:
         return new_data
     
     def inverse_data_preprocessing_for_bn(self, key: str, value: Any, decimals=2) -> Union[str, Any]:
+        #TODO: update for the new transformers 
         new_value = value
         if self.discretized_dict is not None:
             if key in self.discretized_dict:

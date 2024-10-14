@@ -120,7 +120,6 @@ class RecommenderService:
             
             
     def check_compatibility(self, user_profile, context, recipe_data):
-        #TODO: Implement this method to check the compatibility of user profile context and recipe data
         #TODO: Impute missing values for new recipes with know recipes
         #TODO: Control when is not a transformer for this  
         # Transform ingredients 
@@ -167,7 +166,6 @@ class RecommenderService:
                                             recipe_ingredients: str, 
                                             num_items: int = 2,
                                             sample_size: int = 500):
-        #TODO: test this function 
         recipes_df = pd.read_csv("model_assets/df_recipes.csv", sep='|', index_col=0)
         # 1. extract embedding 
         if self.model is not None and self.embedding_transformer is not None:
@@ -197,71 +195,3 @@ class RecommenderService:
         # 4. return the hights ranked recipes 
         return topk_recommendations, topk_indices, final_dict, top_pred
         
-        
-        
-if __name__ == "__main__":
-    # load recipes dataframe 
-    recipes_df = pd.read_csv('model_assets/df_recipes.csv', sep='|', index_col=0)
-    print(f'Recipes loaded: {recipes_df.shape}')
-    recommender_service = RecommenderService("model_assets/model_full_use__fold_0.tf")
-    model_inputs_and_type = recommender_service.get_model_inputs_and_type()
-    print(model_inputs_and_type)
-    recommender_service.load_embeddings("model_assets/full_recipe_embedding_BERT_v2_17_may_recipeId.npz")
-    # example 
-    sample = {'BMI': ['healthy'], 
-     'age_range': ['30-39'], 
-     'allergens': ["tree nuts"], 
-     'allergy': ["soy"], 
-     'calories': [650], 
-     'carbohydrates': [39], 
-     'clinical_gender': ['M'], 
-     'cultural_factor': ['vegan_observant'], 
-     'cultural_restriction': ['vegetarian'], 
-     'current_daily_calories': [1700], 
-     'current_working_status': ['Unemployed'],  
-     'day_number': [0], 
-     'embeddings': recommender_service.get_embedding_for_recipe_id("food_0").reshape(1, -1), 
-     'ethnicity': ['White'], 
-     'fat': [30], 
-     'fiber': [29], 
-     'height': [165], 
-     'life_style': ['Sedentary'], 
-     'marital_status': ['Single'], 
-     'meal_type_y': ['lunch'], 
-     'next_BMI': ['healthy'],  
-     'nutrition_goal': ['maintain_fit'], 
-     'place_of_meal_consumption': ['home'], 
-     'price': [2], 
-     'projected_daily_calories': [2200], 
-     'protein': [30], 
-     'social_situation_of_meal_consumption': ['alone'], 
-     'taste': ['sweet'], 
-     'time_of_meal_consumption': [12.01], 
-     'weight': [65]}
-    recommended_items = recommender_service.recommend_items(sample)
-    print(recommended_items)
-    # test the second function example 2 
-    user_data = {'nutrition_goal': 'maintain_fit', 
-                 'clinical_gender': 'M', 
-                 'age_range': '30-39',
-                 'life_style': 'Sedentary', 
-                 'weight': 65, 
-                 'height': 165,
-                 'projected_daily_calories': 2200,
-                 'current_daily_calories': 1700,
-                 'cultural_factor': 'vegan_observant', 
-                 'allergy': 'soy',
-                'current_working_status': 'Unemployed', 
-                'marital_status': 'Single',
-                'ethnicity': 'White',
-                'BMI': 'healthy', 
-                'next_BMI': 'healthy'
-                }
-    context_data = {'day_number': 1,
-                    'meal_type_y': 'lunch',
-                    'time_of_meal_consumption': 12.01, 
-                    'place_of_meal_consumption': 'home', 
-                    'social_situation_of_meal_consumption': 'alone'}
-    recommendations, indices, final_dict = recommender_service.produce_recommendations(user_data, context_data, recipes_df.sample(n=10))
-    print(f"recommendations recipes: {recommendations}")
-    
