@@ -13,7 +13,7 @@ from recommender_service import RecommenderService
 
 @pytest.fixture
 def recommender_service():
-    path_to_model = os.path.join(current_file_parent, 'model_assets', 'training_model_0_use_full_inputs_user_food_context_input_shape_new_x_bert_regression.tf')
+    path_to_model = os.path.join(current_file_parent, 'model_assets', 'training_model_1_use_full_inputs_user_food_context_input_shape_new_x_bert_regression.tf')
     recommender_service = RecommenderService(path_to_model)
     recommender_service.load_embedding_transformer()
     embedding_path = os.path.join(current_file_parent, 'model_assets', 'full_recipe_embedding_BERT_v2_17_may_recipeId.npz')

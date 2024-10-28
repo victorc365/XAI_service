@@ -18,7 +18,7 @@ base_path = pth.Path(__file__).parent.parent
 print(f"Base path: {base_path}")
 model_path = os.path.join(base_path, 
                           "model_assets",
-                          "training_model_0_use_full_inputs_user_food_context_input_shape_new_x_bert_regression.tf")
+                          "training_model_1_use_full_inputs_user_food_context_input_shape_new_x_bert_regression.tf")
 recommender_service = RecommenderService(model_path)
 model_inputs_and_type = recommender_service.get_model_inputs_and_type()
 print(model_inputs_and_type)
@@ -35,11 +35,11 @@ cluster_path = os.path.join(base_path,
 explanation_service.load_cluster_model(cluster_path)
 path_to_ruleset = os.path.join(base_path,
                                 "model_assets",
-                                "new_experiments_ruleset_bert_0_Full_model.pkl")
+                                "new_experiments_ruleset_bert_0_Full_model_1.pkl")
 explanation_service.load_rule_set(path_to_ruleset)
 path_preprocessing_ruleset = os.path.join(base_path,
                                         "model_assets",
-                                        "preprocessor_rules_new_model_bert.pkl")
+                                        "preprocessor_rules_new_model_bert_2.pkl")
 explanation_service.load_rule_set_preprocessing(path_preprocessing_ruleset)
 path_to_bn_learn_model = os.path.join(base_path,
                                 "model_assets",
@@ -91,11 +91,13 @@ async def recommendation(data: Request, num_recommendations: int = 2, sample_siz
     #TODO: completed ready to check only to check security
     try:
         input_data = await data.json()
+        compatibility_flag = False
         print(f"input data: {input_data}")
         user_dict = input_data["profile"]
         context_dict = input_data["context"]
         recipes_df = pd.read_csv("model_assets/df_recipes.csv", sep='|', index_col=0)
         if "recipes" in input_data.keys():
+            compatibility_flag = True
             recipes_ids = input_data["recipes"]
             recipes_samples = recipes_df[recipes_df["recipeId"].isin(recipes_ids)]
             topk_recommendations, topk_indices, final_dict, top_pred = recommender_service.produce_recommendations(user_data=user_dict,
@@ -112,9 +114,6 @@ async def recommendation(data: Request, num_recommendations: int = 2, sample_siz
                                                                                       threshold=0.7)
         recipe_id_mask = recipes_df["recipeId"].isin(topk_recommendations)
         recipe_names = recipes_df.loc[recipe_id_mask, "name"].to_list()
-        # check high values in recommendations mode
-        general_explanation = explanation_service.generate_high_level_explanation(entities_list=["profile", "recipe", "context"],
-                                                                                  predictions=top_pred)
         ans = {}
         for key in final_dict.keys():
             ans[key] = [final_dict[key][i] for i in topk_indices]
@@ -122,6 +121,12 @@ async def recommendation(data: Request, num_recommendations: int = 2, sample_siz
         X_final = explanation_service.data_preprocessing_for_rules(ans, embedding_cols='embeddings')
         print(X_final.shape)
         rule_prediction = explanation_service.explain_decision_with_rules(X_final)
+        if compatibility_flag:
+            general_explanation = explanation_service.generate_high_level_explanation(entities_list=["profile", "recipe", "context"],
+                                                                            predictions=rule_prediction[0])
+        else: 
+            general_explanation = explanation_service.generate_high_level_explanation(entities_list=["profile", "recipe", "context"],
+                                                                            predictions=top_pred)
         rule_explanation = explanation_service.generate_text_explanation_from_rule_prediction(rule_prediction)
         print(f"Text Explanation: {rule_explanation}")
         processed_sample = ans.copy()

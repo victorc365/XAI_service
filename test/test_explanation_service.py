@@ -21,11 +21,11 @@ def explanation_service():
     explanation_service.load_cluster_model(cluster_path)
     path_to_ruleset = os.path.join(current_file_parent,
                                 "model_assets",
-                                "new_experiments_ruleset_bert_0_Full_model.pkl")
+                                "new_experiments_ruleset_bert_0_Full_model_1.pkl")
     explanation_service.load_rule_set(path_to_ruleset)
     path_preprocessing_ruleset = os.path.join(current_file_parent,
                                         "model_assets",
-                                        "preprocessor_rules_new_model_bert.pkl")
+                                        "preprocessor_rules_new_model_bert_2.pkl")
     explanation_service.load_rule_set_preprocessing(path_preprocessing_ruleset)
     path_to_bn_learn_model = os.path.join(current_file_parent,
                                 "model_assets",

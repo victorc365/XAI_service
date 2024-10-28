@@ -34,6 +34,85 @@ def replace_bad_characters(text: str):
   #new_text = text.translate(str.maketrans('', '', string.punctuation))
   return new_text
 
+def probabilistic_xai_inverse_transform(text: str, preprocessing_pipeline: ColumnTransformer, decimals: int = 2):
+    transformed_text = ""
+    try:
+        if text.startswith('onehot'):
+            transformers = preprocessing_pipeline.transformers_
+            clean_text = text.replace('onehot__', '')
+            one_hot_transformer = None
+            for tr_idx in range(0, len(transformers)):
+                if transformers[tr_idx][0] == 'onehot':
+                    one_hot_transformer = transformers[tr_idx]
+                    break
+            feature_names = one_hot_transformer[2]
+            if clean_text.endswith('=1.0'):
+                clean_text = clean_text.replace('=1.0', '')
+                for feature in feature_names:
+                    if feature in clean_text:
+                        value = clean_text.split(feature)[-1]
+                        value = value.strip('_')
+                        transformed_text = f"{feature} = {value}"
+            else:
+                transformed_text = ''
+        elif text.startswith('text'):
+            if text.endswith('=1'):
+                transformed_text = text.replace('=1', '')
+                transformed_text = transformed_text.replace('text__', '')
+                splitted_text = transformed_text.split('__')
+                value = splitted_text[-1]
+                if value == 'cow' or value == 'milk':
+                    value = "cow's milk"
+                elif value == 'tree' or value == 'nuts':
+                    value = "tree nuts"
+                elif value == 'black' or value == 'beans':
+                    value = "black beans"
+                elif value == 'notallergy':
+                    value = "not allergy"
+                elif value == 'notallergens':
+                    value = "not allergens"
+                elif value == 'notrestriction':
+                    value = "no restriction"
+                transformed_text = f"{''.join(splitted_text[:-1])}={value}"
+            else:
+                transformed_text = ''
+        elif text.startswith('discretize'):
+            transformers = preprocessing_pipeline.transformers_
+            raw_text = text.replace('discretize__', '')
+            splitted_text = raw_text.split('=')
+            index = int(splitted_text[-1])
+            print(f"index={index}".format(index=index))
+            discretize_transformer = None
+            for tr_idx in range(0, len(transformers)):
+                if transformers[tr_idx][0] == 'discretize':
+                    discretize_transformer = transformers[tr_idx]
+                    break
+            feature_index = discretize_transformer[2].index(splitted_text[0])
+            bins = discretize_transformer[1].encoders[feature_index]
+            transformed_text = f"{np.round(bins[index-1], decimals)} < {splitted_text[0]} <= {np.round(bins[index], decimals)}"
+        elif text.startswith('identity'):
+            transformed_text = text.replace('identity__', '')
+        else:
+            transformed_text = text
+        return transformed_text
+    except Exception as e:
+        print(f"An error occurred while processing text explanation: {str(e)}")
+        print(traceback.format_exc())
+        return text
+    
+
+
+def transform_rules_text(text: str):
+    new_text = text.replace("(", "", 1)
+    new_text = new_text[::-1].replace("(", "", 1)[::-1]
+    new_text = new_text.replace("reminder__", "")
+    # process text features 
+    reg_text = r'\(text__[^)]*\)'
+    groups = re.findall(reg_text, new_text, re.IGNORECASE)
+    for group in groups:
+        # TODO: process text output to make it good
+        pass
+    return new_text
 
 class ExplanationService:
     def __init__(self):
@@ -282,7 +361,7 @@ class ExplanationService:
         explanations =[]
         prediction, rule_path = rule_prediction
         for i in range(len(prediction)):
-            if prediction[i] > 0.6:
+            if prediction[i] >= 0.5:
                 text_pred = "like"
             else:
                 text_pred = "dislike"
@@ -316,8 +395,12 @@ class ExplanationService:
             sorted_xai = sorted(raw_xai.items(), key=lambda item: item[1], reverse=True)
             text_xai = []
             for t in sorted_xai:
-                if t[1] > 0.55:
-                    text_xai.append(f"{t[0]} with probability: {np.round(t[1], decimals)}") 
+                if t[1] > 0.70:
+                    transformed_text = probabilistic_xai_inverse_transform(t[0], self.bn_model_preprocessing, decimals)
+                    if len(transformed_text) > 0:
+                        text_xai.append(f"{transformed_text} with probability: {np.round(t[1], decimals)}")
+                else:
+                    break
             text_xai = ", ".join(text_xai)
             text_explanations.append(template.format(prediction=prediction_text, text_xai=text_xai))
         return text_explanations

@@ -4,14 +4,29 @@ from urllib.parse import urljoin
 import datetime as dt
 from typing import Union
 import default_values as dfv
+import pandas as pd
+import pathlib as pth
+import os
+import numpy as np
 
+
+# load recipes data and 
+base_path = pth.Path(__file__).parent.parent
+recipes_df = pd.read_csv("model_assets/df_recipes.csv", sep='|', index_col=0)
+precomputed_embeddings = os.path.join(base_path, 
+                                      "model_assets",
+                                      "full_recipe_embedding_BERT_v2_17_may_recipeId.npz")
+recipes_dict = dict(np.load(precomputed_embeddings))
+recipe_ids = list(recipes_dict.keys())
+
+filtered_recipes = recipes_df[recipes_df["recipeId"].isin(recipe_ids)]
 
 st.title('Test recommendation model')
 
 
 st.markdown("""To test the recommender model first select the mode in the dropdown bellow and provide the data in the form
             """)
-options_reco = ['Best recommendations', 'Evaluate recipe list by id', 'Find me a recipe given ingredients', 'partial query',  'Provide full data']
+options_reco = ['Best recommendations', 'Evaluate recipe compatibility', 'Find me a recipe given ingredients', 'Partial recipe query',  'Provide full recipe data']
 
 reco_mode = st.selectbox('Please select a recommendation mode:',
                          options=options_reco)
@@ -122,11 +137,12 @@ elif reco_mode == options_reco[1]:
     target_url = urljoin(base_url, '/recommendation/')
     st.write("Target url: %s" % target_url)
     recipes_list = st.multiselect('Please choose recipes id from list:',
-                                  [f'food_{i}' for i in range(0, 7017)])
+                                  filtered_recipes["name"].to_list())
     data['profile'] = profile
     data['context'] = context
-    if len(recipes_list) > 0:
-        data['recipes'] = recipes_list
+    chosen_recipes = filtered_recipes.loc[filtered_recipes["name"].isin(recipes_list), "recipeId"].to_list()
+    if len(chosen_recipes) > 0:
+        data['recipes'] = chosen_recipes
 elif reco_mode == options_reco[2]:
     target_url = urljoin(base_url, '/recommendByProximity/')
     st.subheader('Ingredients query', divider=True)
@@ -193,7 +209,7 @@ else:
 
 # show answer
 if st.button("Predict"):
-    st.write("Bottom clicked on")
+    st.write("Querying...")
     response = requests.post(target_url, json=data)
     st.write(response.json())
 

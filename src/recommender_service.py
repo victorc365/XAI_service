@@ -7,6 +7,7 @@ import pandas as pd
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_distances
 import default_values as dfv
+import string
 #TODO: implement safety check on categorical inputs to the model
 class RecommenderService:
     def __init__(self, model_path) -> None:
@@ -167,6 +168,21 @@ class RecommenderService:
                                             num_items: int = 2,
                                             sample_size: int = 500):
         recipes_df = pd.read_csv("model_assets/df_recipes.csv", sep='|', index_col=0)
+        # process recipe ingredients 
+        text = recipe_ingredients.lower()
+        translator = str.maketrans('', '', string.punctuation)
+        # Use the translate method to remove the punctuation
+        cleaned_text = text.translate(translator)
+        splitted_text = cleaned_text.split(' ')
+        similar_recipes = []
+        if len(splitted_text) > 0:
+            # check in the database 
+            if "ingredients_list" in recipes_df.columns:
+                for ingredient in splitted_text:
+                    mask = recipes_df['ingredients_list'].str.contains(ingredient)
+                    recipes = recipes_df.loc[mask, "recipeId"].to_list()
+                    similar_recipes.extend(recipes)
+        similar_recipes_ids = list(set(similar_recipes))      
         # 1. extract embedding 
         if self.model is not None and self.embedding_transformer is not None:
             embedding = self.embedding_transformer.encode(recipe_ingredients)
@@ -184,8 +200,13 @@ class RecommenderService:
         distances_dict = dict(zip(recipe_ids, distances))
         sorted_recipes = list(sorted(distances_dict.items(), key=lambda item: item[1], reverse=True))
         chose_recipes = [item[0] for item in sorted_recipes]
+        chose_recipes = chose_recipes[:sample_size]
+        chosen_set = list(set(chose_recipes).union(set(similar_recipes)))
+        print(f"Chosen set len: {len(chosen_set)}")
         print(f"Chosen recipes:{chose_recipes[:sample_size]}")
-        recipes_samples = recipes_df[recipes_df["recipeId"].isin(chose_recipes[:sample_size])]
+        recipes_samples = recipes_df[recipes_df["recipeId"].isin(chosen_set)]
+        if recipes_samples.shape[0] > sample_size:
+            recipes_samples = recipes_samples.sample(sample_size)
         # 3. execute recommendation 
         topk_recommendations, topk_indices, final_dict, top_pred = self.produce_recommendations(user_data=user_profile,
                                                             context_data=context,
